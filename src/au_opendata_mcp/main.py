@@ -10,6 +10,7 @@ from au_opendata_mcp.api import STATUS_FOR, router, tools_router
 from au_opendata_mcp.deps import close_services
 from au_opendata_mcp.errors import AuOpenDataError
 from au_opendata_mcp.mcp_server import mcp
+from au_opendata_mcp.observability import configure_logging
 
 log = logging.getLogger(__name__)
 
@@ -25,6 +26,13 @@ def create_app() -> FastAPI:
         async with mcp_app.lifespan(app):
             yield
         await close_services()
+        # Not the `finally` in cli(): uvicorn's Server.capture_signals restores the
+        # default SIGTERM/SIGINT disposition and re-raises the signal once serve()
+        # returns, so the process is killed at the OS level before cli() ever regains
+        # control -- code after uvicorn.run() never runs on a signal-driven shutdown.
+        # The ASGI shutdown phase (here) runs before that re-raise, so it is the only
+        # place a shutdown record for the HTTP transport is reliably emitted.
+        log.info("au-opendata-mcp stopped", extra={"event": "shutdown"})
 
     app = FastAPI(
         title="au-opendata-mcp",
@@ -61,9 +69,24 @@ def cli() -> None:
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.INFO)
+    configure_logging("INFO")
+    log.info(
+        "starting au-opendata-mcp",
+        extra={
+            "event": "startup",
+            "transport": args.transport,
+            "host": args.host,
+            "port": args.port,
+        },
+    )
     if args.transport == "stdio":
-        mcp.run(transport="stdio")
+        # mcp.run() installs no signal handling of its own, so a normal return (stdin
+        # closed) or a propagating exception both reach this finally -- unlike the
+        # http branch below, see create_app()'s lifespan for why that one is different.
+        try:
+            mcp.run(transport="stdio")
+        finally:
+            log.info("au-opendata-mcp stopped", extra={"event": "shutdown"})
     else:
         import uvicorn
 

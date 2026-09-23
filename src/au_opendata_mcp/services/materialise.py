@@ -77,9 +77,16 @@ class Materialiser:
             # A cache hit must return before the resource budget applies -- a cached
             # resource is not downloaded at all, so it must not be subject to a
             # download timeout.
-            log.info("materialise cache hit resource_id=%s", resource.resource_id)
+            log.info(
+                "materialisation served from cache",
+                extra={"event": "cache", "outcome": "hit", "resource_id": resource.resource_id},
+            )
             return cached
 
+        log.info(
+            "materialising resource",
+            extra={"event": "cache", "outcome": "miss", "resource_id": resource.resource_id},
+        )
         assert_url_in_catalog(resource.url, catalog_urls)
         try:
             parquet = await asyncio.wait_for(

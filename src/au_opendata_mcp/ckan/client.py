@@ -73,6 +73,16 @@ class CkanClient:
                     continue
                 break
 
+            log.info(
+                "upstream call",
+                extra={
+                    "event": "upstream",
+                    "portal": self.portal.id,
+                    "action": name,
+                    "status": resp.status_code,
+                },
+            )
+
             if resp.status_code == 404:
                 raise ResourceNotFound(
                     f"{name}({params}) not found on {self.portal.id}",

@@ -5,6 +5,7 @@ from fastmcp.exceptions import ToolError
 
 from au_opendata_mcp.deps import get_services
 from au_opendata_mcp.errors import AuOpenDataError
+from au_opendata_mcp.observability import ToolTimingMiddleware
 from au_opendata_mcp.services import au_tools
 
 mcp: FastMCP = FastMCP(
@@ -18,6 +19,8 @@ mcp: FastMCP = FastMCP(
         "publisher and licence — cite them."
     ),
 )
+
+mcp.add_middleware(ToolTimingMiddleware())
 
 
 def _fail(exc: AuOpenDataError) -> ToolError:
