@@ -1,6 +1,7 @@
 from typing import Any
 
 from fastapi import APIRouter, Query
+from pydantic import BaseModel
 
 from au_opendata_mcp.deps import get_services
 from au_opendata_mcp.errors import (
@@ -55,3 +56,27 @@ async def dataset(dataset_id: str, portal: str = "data.gov.au") -> dict[str, Any
 async def organizations(portal: str = "data.gov.au", q: str | None = None) -> list[dict[str, Any]]:
     orgs = await get_services().catalog.list_organizations(portal=portal, q=q)
     return [o.model_dump() for o in orgs]
+
+
+class QueryRequest(BaseModel):
+    sql: str
+    portal: str = "data.gov.au"
+    limit: int = 100
+
+
+@router.get("/resources/{resource_id}/preview")
+async def preview(
+    resource_id: str,
+    portal: str = "data.gov.au",
+    limit: int = Query(20, ge=1, le=20),
+) -> dict[str, Any]:
+    result = await get_services().query.preview_resource(resource_id, portal, limit)
+    return result.model_dump()
+
+
+@router.post("/resources/{resource_id}/query")
+async def query(resource_id: str, body: QueryRequest) -> dict[str, Any]:
+    result = await get_services().query.query_resource(
+        resource_id, body.sql, body.portal, body.limit
+    )
+    return result.model_dump()

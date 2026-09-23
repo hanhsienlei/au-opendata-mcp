@@ -9,10 +9,12 @@ from au_opendata_mcp.errors import AuOpenDataError
 mcp: FastMCP = FastMCP(
     name="au-opendata-mcp",
     instructions=(
-        "Australian government open data. Workflow: search_datasets to find a dataset, "
-        "get_dataset to list its resources and see which are queryable, preview_resource "
-        "to learn a resource's columns, then query_resource to ask the real question. "
-        "Every result carries its source URL, publisher and licence — cite them."
+        "Australian government open data. Typical workflow: search_datasets to find a "
+        "dataset (or list_organizations to browse by publisher first), get_dataset to list "
+        "its resources and see which are queryable, preview_resource to learn a resource's "
+        "columns, then query_resource to ask the real question with SQL. list_portals shows "
+        "which portals are available to search. Every result carries its source URL, "
+        "publisher and licence — cite them."
     ),
 )
 
@@ -96,6 +98,59 @@ async def list_organizations(
     try:
         orgs = await get_services().catalog.list_organizations(portal=portal, q=q)
         return [o.model_dump() for o in orgs]
+    except ValueError as exc:
+        raise ToolError(str(exc)) from exc
+    except AuOpenDataError as exc:
+        raise _fail(exc) from exc
+
+
+@mcp.tool
+async def preview_resource(
+    resource_id: str, portal: str = "data.gov.au", limit: int = 20
+) -> dict[str, Any]:
+    """Show a resource's columns, their types, a sample of rows, and the total row count.
+
+    ALWAYS call this before query_resource: you cannot write correct SQL without first
+    seeing the column names. Costs nothing for resources held in the portal's DataStore;
+    for others it downloads and caches the file, which then makes the follow-up query free.
+
+    Args:
+        resource_id: From get_dataset's resources list.
+        portal: The portal the resource belongs to.
+        limit: Sample rows to return, capped at 20."""
+    try:
+        result = await get_services().query.preview_resource(resource_id, portal, limit)
+        return result.model_dump()
+    except ValueError as exc:
+        raise ToolError(str(exc)) from exc
+    except AuOpenDataError as exc:
+        raise _fail(exc) from exc
+
+
+@mcp.tool
+async def query_resource(
+    resource_id: str, sql: str, portal: str = "data.gov.au", limit: int = 100
+) -> dict[str, Any]:
+    """Run a read-only SQL query over one tabular resource and get the rows back.
+
+    The SQL dialect is DuckDB. The resource is always exposed as the table `t`,
+    whatever the file was called. Only a single SELECT statement is permitted:
+    no DDL, no DML, no reading other tables or files.
+
+    Example:
+        sql = "SELECT suburb, AVG(price) AS mean FROM t GROUP BY suburb ORDER BY mean DESC"
+
+    Call preview_resource first to learn the column names. At most 100 rows are returned;
+    `truncated` tells you whether there were more.
+
+    Args:
+        resource_id: From get_dataset's resources list. Must have queryable == "yes".
+        sql: A single DuckDB SELECT over the table `t`.
+        portal: The portal the resource belongs to.
+        limit: Maximum rows to return, capped at 100."""
+    try:
+        result = await get_services().query.query_resource(resource_id, sql, portal, limit)
+        return result.model_dump()
     except ValueError as exc:
         raise ToolError(str(exc)) from exc
     except AuOpenDataError as exc:

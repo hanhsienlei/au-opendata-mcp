@@ -3,11 +3,13 @@ from functools import lru_cache
 
 import httpx
 
-from au_opendata_mcp.cache import MetadataCache
+from au_opendata_mcp.cache import BlobCache, MetadataCache
 from au_opendata_mcp.ckan.client import CkanClient
 from au_opendata_mcp.config import Settings, get_settings
 from au_opendata_mcp.portals import all_portals
 from au_opendata_mcp.services.catalog import CatalogService
+from au_opendata_mcp.services.materialise import Materialiser
+from au_opendata_mcp.services.query import QueryService
 
 
 @dataclass(slots=True)
@@ -15,6 +17,8 @@ class Services:
     settings: Settings
     http: httpx.AsyncClient
     catalog: CatalogService
+    query: QueryService
+    blobs: BlobCache
 
 
 @lru_cache
@@ -28,7 +32,22 @@ def get_services() -> Services:
         ttl_seconds=settings.metadata_ttl_seconds,
     )
     clients = {p.id: CkanClient(p, http, settings, cache=metadata_cache) for p in all_portals()}
-    return Services(settings=settings, http=http, catalog=CatalogService(clients, settings))
+    catalog = CatalogService(clients, settings)
+    blobs = BlobCache(
+        settings.cache_dir / "blobs",
+        settings.materialisation_ttl_seconds,
+        settings.cache_max_bytes,
+    )
+    # Reuses the same follow_redirects=False client: Materialiser re-validates SSRF safety
+    # on every redirect hop itself, which only works if httpx isn't following them internally.
+    materialiser = Materialiser(http, settings, blobs)
+    return Services(
+        settings=settings,
+        http=http,
+        catalog=catalog,
+        query=QueryService(clients, catalog, materialiser, settings),
+        blobs=blobs,
+    )
 
 
 async def close_services() -> None:
