@@ -3,6 +3,7 @@ import logging
 from collections.abc import Awaitable, Callable, Mapping
 from typing import Literal, TypeVar
 
+import httpx
 from pydantic import BaseModel
 
 from au_opendata_mcp.ckan.client import CkanClient
@@ -112,6 +113,44 @@ class CatalogService:
         get_portal(portal_id)
         return self.clients[portal_id]
 
+    async def _probe_size(self, resource: ResourceInfo) -> None:
+        """Resolve one undeclared size via HEAD, under a dedicated short budget."""
+        if resource.queryable != "unknown" or not resource.url:
+            return
+        client = next(iter(self.clients.values())).http
+        try:
+            resp = await client.head(
+                resource.url,
+                timeout=self.settings.head_timeout_seconds,
+                follow_redirects=True,
+            )
+            length = resp.headers.get("content-length")
+        except httpx.HTTPError:
+            resource.queryable_reason = "size could not be probed; enforced during download instead"
+            return
+
+        if not length or not length.isdigit():
+            resource.queryable_reason = (
+                "size not declared and not reported by the server; enforced during download instead"
+            )
+            return
+
+        resource.size_bytes = int(length)
+        if resource.size_bytes > self.settings.max_resource_bytes:
+            resource.queryable = "no"
+            resource.queryable_reason = (
+                f"resource is {_mb(resource.size_bytes)}, over the "
+                f"{_mb(self.settings.max_resource_bytes)} limit"
+            )
+        else:
+            resource.queryable = "yes"
+            resource.queryable_reason = None
+
+    async def _probe_sizes(self, resources: list[ResourceInfo]) -> None:
+        pending = [r for r in resources if r.queryable == "unknown" and r.url]
+        if pending:
+            await asyncio.gather(*(self._probe_size(r) for r in pending))
+
     async def _fan_out_all_portals(
         self, op: str, make_call: Callable[[Portal], Awaitable[list[T]]]
     ) -> list[T]:
@@ -217,6 +256,7 @@ class CatalogService:
                     queryable_reason=reason,
                 )
             )
+        await self._probe_sizes(resources)
         return DatasetDetail(
             dataset_id=ds.name,
             title=ds.title or ds.name,
