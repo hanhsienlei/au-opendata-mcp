@@ -11,7 +11,7 @@ reports each portal's current dataset count.
 ## Quickstart
 
 ```bash
-git clone https://github.com/<you>/au-opendata-mcp
+git clone https://github.com/<your-username>/au-opendata-mcp   # replace <your-username>
 cd au-opendata-mcp
 uv sync
 uv run au-opendata-mcp --transport http --port 8000   # REST + MCP over HTTP
@@ -33,8 +33,8 @@ Add to `claude_desktop_config.json`:
 }
 ```
 
-This runs the server over stdio, which is FastMCP's default transport when `--transport` is
-not passed. Restart Claude Desktop after editing the config.
+This runs the server over stdio, this server's default transport when `--transport` is not
+passed (see `main.py`). Restart Claude Desktop after editing the config.
 
 ## Tools
 
@@ -119,8 +119,15 @@ checked.
 
 ## Licensing
 
-Datasets carry their own licences, most commonly CC BY 4.0. Every result includes its
-`licence` field. Attributing the source when you reuse the data is your responsibility.
+Datasets carry their own licences, and they vary widely. Creative Commons variants are common
+on both portals, but on data.gov.au roughly two-thirds of datasets specify no licence at all
+(measured via the portal's own `package_search` licence facet, September 2026 — worth
+re-checking rather than trusting, since it will drift). data.sa.gov.au is Creative
+Commons-dominated, but it is a small fraction of the combined catalogue, so it does not set
+the norm for the whole server.
+
+Every result includes its `licence` field — treat an unspecified licence as "unknown," not
+"free to use," and attributing the source when you reuse the data is your responsibility.
 
 ## Evaluation
 
