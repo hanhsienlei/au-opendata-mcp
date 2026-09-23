@@ -1,4 +1,5 @@
 import json
+import logging
 import pathlib
 
 import httpx
@@ -8,7 +9,7 @@ import respx
 from au_opendata_mcp.ckan.client import CkanClient
 from au_opendata_mcp.ckan.models import CkanResource
 from au_opendata_mcp.config import Settings
-from au_opendata_mcp.errors import ResourceNotFound
+from au_opendata_mcp.errors import ResourceNotFound, UpstreamUnavailable
 from au_opendata_mcp.portals import get_portal
 from au_opendata_mcp.services.catalog import CatalogService, assess_queryable
 
@@ -155,6 +156,37 @@ async def test_search_across_all_portals_merges_and_tags_each_result():
     )
     results = await build_service().search_datasets("bus", portal="all")
     assert {r.portal for r in results} == {"data.gov.au", "data.sa.gov.au"}
+
+
+# --- fix: a fan-out failure must never be silent (partial degradation is logged,
+# total outage raises rather than returning an indistinguishable-from-empty list) ---
+
+
+@respx.mock
+async def test_search_all_portals_logs_the_failure_and_returns_the_survivor(caplog):
+    respx.get(url__startswith="https://data.gov.au/data/api/3/action/package_search").mock(
+        return_value=httpx.Response(500)
+    )
+    respx.get(url__startswith="https://data.sa.gov.au/data/api/3/action/package_search").mock(
+        return_value=httpx.Response(200, json=package_search_payload(DATASET))
+    )
+    with caplog.at_level(logging.WARNING):
+        results = await build_service().search_datasets("bus", portal="all")
+    assert {r.portal for r in results} == {"data.sa.gov.au"}
+    assert any(r.levelno == logging.WARNING and "data.gov.au" in r.message for r in caplog.records)
+
+
+@respx.mock
+async def test_search_all_portals_raises_when_every_portal_fails():
+    respx.get(url__startswith="https://data.gov.au/data/api/3/action/package_search").mock(
+        return_value=httpx.Response(500)
+    )
+    respx.get(url__startswith="https://data.sa.gov.au/data/api/3/action/package_search").mock(
+        return_value=httpx.Response(500)
+    )
+    with pytest.raises(UpstreamUnavailable) as exc:
+        await build_service().search_datasets("bus", portal="all")
+    assert "data.gov.au" in str(exc.value) and "data.sa.gov.au" in str(exc.value)
 
 
 @respx.mock
@@ -313,6 +345,53 @@ async def test_list_organizations_across_all_portals_tags_each_by_portal():
         )
     orgs = await build_service().list_organizations(portal="all")
     assert {o.portal for o in orgs} == {"data.gov.au", "data.sa.gov.au"}
+
+
+# --- fix: same silent-fan-out-failure guard, for list_organizations ---
+
+
+@respx.mock
+async def test_list_organizations_all_portals_logs_the_failure_and_returns_the_survivor(caplog):
+    respx.get(url__startswith="https://data.gov.au/data/api/3/action/organization_list").mock(
+        return_value=httpx.Response(500)
+    )
+    respx.get(url__startswith="https://data.sa.gov.au/data/api/3/action/organization_list").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "success": True,
+                "result": [
+                    {"name": "org-sa", "title": "Org", "package_count": 1},
+                ],
+            },
+        )
+    )
+    with caplog.at_level(logging.WARNING):
+        orgs = await build_service().list_organizations(portal="all")
+    assert {o.portal for o in orgs} == {"data.sa.gov.au"}
+    assert any(r.levelno == logging.WARNING and "data.gov.au" in r.message for r in caplog.records)
+
+
+@respx.mock
+async def test_list_organizations_all_portals_raises_when_every_portal_fails():
+    for host in ("data.gov.au", "data.sa.gov.au"):
+        respx.get(url__startswith=f"https://{host}/data/api/3/action/organization_list").mock(
+            return_value=httpx.Response(500)
+        )
+    with pytest.raises(UpstreamUnavailable) as exc:
+        await build_service().list_organizations(portal="all")
+    assert "data.gov.au" in str(exc.value) and "data.sa.gov.au" in str(exc.value)
+
+
+# --- unknown portal must fail loudly, before Tasks 9-12 copy the _client() pattern ---
+
+
+async def test_unknown_portal_raises_value_error_naming_valid_portals():
+    with pytest.raises(ValueError) as exc:
+        await build_service().search_datasets("bus", portal="data.nsw.gov.au")
+    assert "data.nsw.gov.au" in str(exc.value)
+    assert "data.gov.au" in str(exc.value)
+    assert "data.sa.gov.au" in str(exc.value)
 
 
 @respx.mock

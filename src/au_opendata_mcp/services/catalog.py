@@ -1,17 +1,22 @@
 import asyncio
-from collections.abc import Mapping
-from typing import Literal
+import logging
+from collections.abc import Awaitable, Callable, Mapping
+from typing import Literal, TypeVar
 
 from pydantic import BaseModel
 
 from au_opendata_mcp.ckan.client import CkanClient
 from au_opendata_mcp.ckan.models import CkanDataset, CkanResource
 from au_opendata_mcp.config import Settings
+from au_opendata_mcp.errors import UpstreamUnavailable
 from au_opendata_mcp.models import Sourced
 from au_opendata_mcp.portals import Portal, all_portals, get_portal
 
+log = logging.getLogger(__name__)
+
 TABULAR_FORMATS = frozenset({"CSV", "TSV", "XLSX", "XLS"})
 Queryable = Literal["yes", "no", "unknown"]
+T = TypeVar("T")
 
 
 class PortalInfo(BaseModel):
@@ -107,6 +112,33 @@ class CatalogService:
         get_portal(portal_id)
         return self.clients[portal_id]
 
+    async def _fan_out_all_portals(
+        self, op: str, make_call: Callable[[Portal], Awaitable[list[T]]]
+    ) -> list[T]:
+        """Run `make_call` concurrently against every portal and merge the successes.
+
+        A per-portal failure is logged at WARNING (naming the portal and the
+        exception) and otherwise silently excluded from the merge — that is the
+        intended "partial degradation" behaviour. But if *every* portal failed,
+        returning an empty list would be indistinguishable from "no results",
+        and the consumer here is a language model that reports the answer to a
+        user in prose: it must not be able to confuse "nothing matched" with
+        "we could not reach anything". So a total outage raises instead.
+        """
+        portals = all_portals()
+        results = await asyncio.gather(*(make_call(p) for p in portals), return_exceptions=True)
+        merged: list[T] = []
+        failed: list[str] = []
+        for p, item in zip(portals, results, strict=True):
+            if isinstance(item, BaseException):
+                log.warning("%s failed for portal %s: %s", op, p.id, item)
+                failed.append(p.id)
+            else:
+                merged.extend(item)
+        if portals and len(failed) == len(portals):
+            raise UpstreamUnavailable(f"all portals unreachable for {op}: {', '.join(failed)}")
+        return merged
+
     async def list_portals(self) -> list[PortalInfo]:
         async def count(portal: Portal) -> int | None:
             try:
@@ -131,18 +163,10 @@ class CatalogService:
         limit: int = 20,
     ) -> list[DatasetSummary]:
         if portal == "all":
-            per_portal = await asyncio.gather(
-                *(
-                    self.search_datasets(q, p.id, organisation, format, limit)
-                    for p in all_portals()
-                ),
-                return_exceptions=True,
+            return await self._fan_out_all_portals(
+                "search_datasets",
+                lambda p: self.search_datasets(q, p.id, organisation, format, limit),
             )
-            merged: list[DatasetSummary] = []
-            for item in per_portal:
-                if isinstance(item, list):
-                    merged.extend(item)
-            return merged
 
         rows = max(1, min(limit, self.settings.max_search_limit))
         params: dict[str, object] = {"q": q, "rows": rows}
@@ -209,15 +233,10 @@ class CatalogService:
         self, portal: str = "data.gov.au", q: str | None = None
     ) -> list[OrganizationSummary]:
         if portal == "all":
-            per_portal = await asyncio.gather(
-                *(self.list_organizations(p.id, q) for p in all_portals()),
-                return_exceptions=True,
+            return await self._fan_out_all_portals(
+                "list_organizations",
+                lambda p: self.list_organizations(p.id, q),
             )
-            merged: list[OrganizationSummary] = []
-            for item in per_portal:
-                if isinstance(item, list):
-                    merged.extend(item)
-            return merged
 
         result = await self._client(portal).action(
             "organization_list", {"all_fields": True, "limit": 1000}
