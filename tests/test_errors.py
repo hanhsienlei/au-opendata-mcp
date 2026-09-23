@@ -3,6 +3,7 @@ import pytest
 from au_opendata_mcp.errors import (
     AuOpenDataError,
     DownloadFailed,
+    QueryTimeout,
     ResourceNotFound,
     ResourceNotQueryable,
     ResourceTooLarge,
@@ -20,6 +21,7 @@ from au_opendata_mcp.errors import (
         SqlRejected,
         UpstreamUnavailable,
         DownloadFailed,
+        QueryTimeout,
     ],
 )
 def test_every_domain_error_shares_one_base(cls):

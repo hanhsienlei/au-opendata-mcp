@@ -19,6 +19,15 @@ class ResourceTooLarge(AuOpenDataError): ...
 class SqlRejected(AuOpenDataError): ...
 
 
+class QueryTimeout(AuOpenDataError):
+    """A query passed validation but ran too long and was aborted by the sandbox watchdog.
+
+    Deliberately distinct from SqlRejected: a timeout is a runtime abort, not a validation
+    rejection, and the message a model reads should say so -- "your SQL is invalid" and
+    "your SQL ran too long" call for different retries.
+    """
+
+
 class UpstreamUnavailable(AuOpenDataError): ...
 
 

@@ -6,6 +6,7 @@ from au_opendata_mcp.deps import get_services
 from au_opendata_mcp.errors import (
     AuOpenDataError,
     DownloadFailed,
+    QueryTimeout,
     ResourceNotFound,
     ResourceNotQueryable,
     ResourceTooLarge,
@@ -20,6 +21,7 @@ STATUS_FOR: dict[type[AuOpenDataError], int] = {
     SqlRejected: 400,
     UpstreamUnavailable: 502,
     DownloadFailed: 502,
+    QueryTimeout: 504,
 }
 
 router = APIRouter(prefix="/api", tags=["catalog"])

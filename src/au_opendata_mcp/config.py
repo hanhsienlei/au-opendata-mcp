@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     max_preview_limit: int = 20
     max_query_limit: int = 100
     upstream_retries: int = 2
+    query_timeout_seconds: float = 30.0
 
 
 @lru_cache

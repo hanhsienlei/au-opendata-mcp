@@ -1,6 +1,8 @@
+import asyncio
 import datetime
 import decimal
 import logging
+import threading
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -12,7 +14,7 @@ from pydantic import BaseModel
 from au_opendata_mcp.ckan.client import CkanClient
 from au_opendata_mcp.ckan.models import CkanResource
 from au_opendata_mcp.config import Settings
-from au_opendata_mcp.errors import ResourceNotFound, SqlRejected
+from au_opendata_mcp.errors import QueryTimeout, ResourceNotFound, SqlRejected
 from au_opendata_mcp.models import Sourced
 from au_opendata_mcp.safety import validate_sql, wrap_with_limit
 from au_opendata_mcp.services.catalog import (
@@ -70,7 +72,11 @@ def jsonable(value: Any) -> Any:
 
 
 def execute_in_sandbox(
-    parquet: Path, sql: str, limit: int, memory_limit: str
+    parquet: Path,
+    sql: str,
+    limit: int,
+    memory_limit: str,
+    timeout_seconds: float | None = None,
 ) -> tuple[list[ColumnInfo], list[dict[str, Any]], bool]:
     """Run caller SQL against a locked-down in-memory DuckDB.
 
@@ -79,19 +85,47 @@ def execute_in_sandbox(
     also disables read_parquet. Locking first and loading second fails outright; loading
     first and never locking leaves the filesystem open to caller SQL.
     Verified on DuckDB 1.5.5. Do not reorder. See tests/test_query_execute.py.
+
+    This call blocks the calling thread for as long as the query runs -- callers on the
+    event loop must go through `run_sandboxed_query` instead of calling this directly, or a
+    slow or runaway query stalls every other concurrent request, not just its own.
+
+    `timeout_seconds`, when given, bounds only the caller's query, not the CREATE TABLE load
+    above it: a watchdog timer calls `con.interrupt()` if the query is still running once the
+    budget elapses, and that abort is reported as `QueryTimeout` rather than `SqlRejected` --
+    a timeout is a runtime abort, not a rejected query. `memory_limit` bounds memory; this
+    bounds wall-clock time; they are complementary, and neither substitutes for the other.
     """
     con = duckdb.connect()
+    timer: threading.Timer | None = None
     try:
         con.execute(f"SET memory_limit = '{memory_limit}'")
         con.execute("CREATE TABLE t AS SELECT * FROM read_parquet(?)", [str(parquet)])
         con.execute("SET enable_external_access = false")
         con.execute("SET lock_configuration = true")
 
-        cursor = con.execute(wrap_with_limit(sql, limit))
-        description = cursor.description or []
-        columns = [ColumnInfo(name=str(d[0]), type=str(d[1])) for d in description]
-        names = [c.name for c in columns]
-        fetched = cursor.fetchall()
+        if timeout_seconds is not None:
+            timer = threading.Timer(timeout_seconds, con.interrupt)
+            timer.daemon = True
+            timer.start()
+
+        try:
+            cursor = con.execute(wrap_with_limit(sql, limit))
+            description = cursor.description or []
+            columns = [ColumnInfo(name=str(d[0]), type=str(d[1])) for d in description]
+            names = [c.name for c in columns]
+            fetched = cursor.fetchall()
+        finally:
+            if timer is not None:
+                timer.cancel()
+    except duckdb.InterruptException as exc:
+        # Only ever armed when timeout_seconds is not None (see above).
+        assert timeout_seconds is not None
+        raise QueryTimeout(
+            f"the query exceeded the {timeout_seconds:.0f}s time budget and was aborted; "
+            "narrow it and try again -- add a WHERE clause, reduce the number of joins, or "
+            "use an aggregate instead of a full scan"
+        ) from exc
     except duckdb.Error as exc:
         raise SqlRejected(f"the query could not be run: {exc}") from exc
     finally:
@@ -103,6 +137,33 @@ def execute_in_sandbox(
         for row in fetched[:limit]
     ]
     return columns, rows, truncated
+
+
+async def run_sandboxed_query(
+    parquet: Path,
+    sql: str,
+    limit: int,
+    memory_limit: str,
+    timeout_seconds: float,
+) -> tuple[list[ColumnInfo], list[dict[str, Any]], bool]:
+    """Run `execute_in_sandbox` off the event loop, bounded by `timeout_seconds`.
+
+    DuckDB's `execute()` is a blocking call. Running it directly inside `async def` code
+    would stall the event loop -- and therefore every other concurrent MCP/REST caller, not
+    just this one -- for as long as a caller-supplied query takes to run, or hang: a single
+    runaway query needs no external access at all to do this, since `enable_external_access`
+    has nothing to do with CPU time. `asyncio.to_thread` hops the blocking call onto a worker
+    thread so the loop keeps ticking while it runs; `timeout_seconds` is passed straight
+    through to `execute_in_sandbox`'s own watchdog, which aborts the query via
+    `con.interrupt()` if it overruns.
+
+    Every caller that runs SQL against the sandbox -- `query_resource` here, and
+    `preview_resource` (Task 11) -- must call this, not `execute_in_sandbox` directly, so
+    both get the same event-loop protection and time budget.
+    """
+    return await asyncio.to_thread(
+        execute_in_sandbox, parquet, sql, limit, memory_limit, timeout_seconds
+    )
 
 
 class QueryService:
@@ -178,8 +239,12 @@ class QueryService:
         parquet = await self.materialiser.parquet_for(
             resolved.resource, resolved.catalog_urls, portal, resolved.last_modified
         )
-        columns, rows, truncated = execute_in_sandbox(
-            parquet, normalised, capped, self.settings.duckdb_memory_limit
+        columns, rows, truncated = await run_sandboxed_query(
+            parquet,
+            normalised,
+            capped,
+            self.settings.duckdb_memory_limit,
+            self.settings.query_timeout_seconds,
         )
         log.info(
             "query_resource resource_id=%s rows=%d truncated=%s", resource_id, len(rows), truncated

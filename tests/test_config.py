@@ -13,6 +13,7 @@ def test_limits_match_the_spec():
     assert s.max_query_limit == 100
     assert s.max_preview_limit == 20
     assert s.max_search_limit == 50
+    assert s.query_timeout_seconds == 30.0
 
 
 def test_settings_read_from_environment(monkeypatch):
