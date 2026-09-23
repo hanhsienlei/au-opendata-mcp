@@ -32,6 +32,9 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 markers = ["live: hits real upstream APIs; deselected by default"]
 addopts = "-m 'not live'"
+filterwarnings = [
+    "ignore:The anyio.abc.BlockingPortal alias is deprecated:DeprecationWarning:starlette.testclient",
+]
 
 [tool.ruff]
 line-length = 100
