@@ -40,14 +40,13 @@ def assert_safe_url(url: str, *, resolve: Callable[[str], list[str]] = _resolve_
 
     for raw in addresses:
         ip = ipaddress.ip_address(raw)
-        if (
-            ip.is_private
-            or ip.is_loopback
-            or ip.is_link_local
-            or ip.is_reserved
-            or ip.is_multicast
-            or ip.is_unspecified
-        ):
+        # `is_global` is the basis rather than enumerating private/loopback/link-local/
+        # reserved/unspecified by hand: hand-enumerated ranges are exactly what let
+        # CGNAT space (100.64.0.0/10) through undetected, and new reserved ranges get
+        # allocated over time. `is_multicast` must still be checked separately and
+        # surprisingly: `ip.is_global` is True for multicast addresses (e.g.
+        # 224.0.0.1), so `not is_global` alone would let multicast through.
+        if not ip.is_global or ip.is_multicast:
             raise DownloadFailed(
                 f"refusing to fetch {host!r}: it resolves to the non-public address {ip}"
             )

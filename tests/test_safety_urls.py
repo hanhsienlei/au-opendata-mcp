@@ -20,6 +20,11 @@ def test_a_public_https_url_is_allowed():
     assert assert_safe_url("https://data.gov.au/data.csv", resolve=PUBLIC) is None
 
 
+def test_a_public_ipv6_url_is_allowed():
+    resolve = fake_resolver({"v6.example.org": ["2606:2800:220:1::"]})
+    assert assert_safe_url("https://v6.example.org/data.csv", resolve=resolve) is None
+
+
 @pytest.mark.parametrize(
     "url",
     [
@@ -44,6 +49,11 @@ def test_non_http_schemes_are_refused(url):
         ("internal", "172.16.0.1", "private class B"),
         ("six", "::1", "IPv6 loopback"),
         ("sixlocal", "fd00::1", "IPv6 unique local"),
+        ("cgnat", "100.64.0.1", "carrier-grade NAT / shared address space"),
+        ("mcast", "224.0.0.1", "multicast"),
+        ("testnet", "192.0.2.1", "TEST-NET-1"),
+        ("benchmark", "198.18.0.1", "benchmarking range"),
+        ("unspec", "0.0.0.0", "unspecified"),
     ],
 )
 def test_hosts_resolving_to_non_public_addresses_are_refused(host, ip, label):
