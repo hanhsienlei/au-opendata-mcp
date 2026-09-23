@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import datetime
 import decimal
 import logging
@@ -11,7 +12,7 @@ from typing import Any, Literal
 import duckdb
 from pydantic import BaseModel
 
-from au_opendata_mcp.ckan.client import CkanClient
+from au_opendata_mcp.ckan.client import CkanClient, strip_internal_columns
 from au_opendata_mcp.ckan.models import CkanResource
 from au_opendata_mcp.config import Settings
 from au_opendata_mcp.errors import QueryTimeout, ResourceNotFound, SqlRejected
@@ -105,7 +106,17 @@ def execute_in_sandbox(
         con.execute("SET lock_configuration = true")
 
         if timeout_seconds is not None:
-            timer = threading.Timer(timeout_seconds, con.interrupt)
+
+            def _interrupt_ignoring_races() -> None:
+                # Timer.cancel() cannot stop a callback that has already left its wait
+                # state, so this can in principle still fire after `con.close()` below has
+                # run (a narrow race between the finally block and the daemon timer
+                # thread). Swallow duckdb.Error rather than let it surface as unhandled
+                # exception noise on the timer thread -- there is nothing left to abort.
+                with contextlib.suppress(duckdb.Error):
+                    con.interrupt()
+
+            timer = threading.Timer(timeout_seconds, _interrupt_ignoring_races)
             timer.daemon = True
             timer.start()
 
@@ -122,7 +133,7 @@ def execute_in_sandbox(
         # Only ever armed when timeout_seconds is not None (see above).
         assert timeout_seconds is not None
         raise QueryTimeout(
-            f"the query exceeded the {timeout_seconds:.0f}s time budget and was aborted; "
+            f"the query exceeded the {timeout_seconds:g}s time budget and was aborted; "
             "narrow it and try again -- add a WHERE clause, reduce the number of joins, or "
             "use an aggregate instead of a full scan"
         ) from exc
@@ -257,6 +268,74 @@ class QueryService:
             rows=rows,
             row_count=len(rows),
             truncated=truncated,
+            dataset_url=resolved.dataset.dataset_url,
+            organisation=resolved.dataset.organisation,
+            licence=resolved.dataset.licence,
+        )
+
+    async def preview_resource(
+        self, resource_id: str, portal: str = "data.gov.au", limit: int = 20
+    ) -> PreviewResult:
+        capped = max(1, min(limit, self.settings.max_preview_limit))
+        resolved = await self.resolve(resource_id, portal)
+
+        if resolved.resource.datastore_active:
+            try:
+                return await self._preview_from_datastore(resolved, portal, capped)
+            except Exception as exc:  # DataStore is a fast path, not a hard dependency
+                log.info("datastore preview failed for %s, materialising: %s", resource_id, exc)
+
+        return await self._preview_from_parquet(resolved, portal, capped)
+
+    async def _preview_from_datastore(
+        self, resolved: ResolvedResource, portal: str, limit: int
+    ) -> PreviewResult:
+        result = await self.clients[portal].action(
+            "datastore_search", {"resource_id": resolved.resource.resource_id, "limit": limit}
+        )
+        fields = result.get("fields", [])
+        rows = strip_internal_columns(result.get("records", []))
+        return PreviewResult(
+            resource_id=resolved.resource.resource_id,
+            portal=portal,
+            source="datastore",
+            columns=[
+                ColumnInfo(name=str(f["id"]), type=str(f.get("type", "unknown"))) for f in fields
+            ],
+            rows=[{k: jsonable(v) for k, v in row.items()} for row in rows],
+            total_rows=result.get("total"),
+            dataset_url=resolved.dataset.dataset_url,
+            organisation=resolved.dataset.organisation,
+            licence=resolved.dataset.licence,
+        )
+
+    async def _preview_from_parquet(
+        self, resolved: ResolvedResource, portal: str, limit: int
+    ) -> PreviewResult:
+        parquet = await self.materialiser.parquet_for(
+            resolved.resource, resolved.catalog_urls, portal, resolved.last_modified
+        )
+        columns, rows, _ = await run_sandboxed_query(
+            parquet,
+            "SELECT * FROM t",
+            limit,
+            self.settings.duckdb_memory_limit,
+            self.settings.query_timeout_seconds,
+        )
+        _, count_rows, _ = await run_sandboxed_query(
+            parquet,
+            "SELECT count(*) AS n FROM t",
+            1,
+            self.settings.duckdb_memory_limit,
+            self.settings.query_timeout_seconds,
+        )
+        return PreviewResult(
+            resource_id=resolved.resource.resource_id,
+            portal=portal,
+            source="materialised",
+            columns=columns,
+            rows=rows,
+            total_rows=int(count_rows[0]["n"]) if count_rows else None,
             dataset_url=resolved.dataset.dataset_url,
             organisation=resolved.dataset.organisation,
             licence=resolved.dataset.licence,
