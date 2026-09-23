@@ -1,3 +1,7 @@
+import asyncio
+import tempfile
+from pathlib import Path
+
 import httpx
 import pytest
 import respx
@@ -177,3 +181,63 @@ async def test_an_upstream_error_on_download_becomes_download_failed(tmp_path):
     respx.get(URL).mock(return_value=httpx.Response(503))
     with pytest.raises(DownloadFailed):
         await build(tmp_path).parquet_for(resource(), {URL})
+
+
+def _temp_dirs() -> set[Path]:
+    root = Path(tempfile.gettempdir())
+    return {p for p in root.iterdir() if p.is_dir()}
+
+
+@respx.mock
+async def test_a_successful_conversion_does_not_leave_an_empty_temp_directory_behind(tmp_path):
+    """_convert used to reserve its destination with tempfile.mkdtemp() and, on
+    success, move only the resulting *file* out via BlobCache.store -- leaving the
+    now-empty directory behind on every successful materialisation, forever, since
+    nothing ever evicts it (unlike BlobCache's own contents).
+    """
+    before = _temp_dirs()
+    respx.get(URL).mock(return_value=httpx.Response(200, content=CSV))
+    await build(tmp_path).parquet_for(resource(), {URL})
+    assert _temp_dirs() == before
+
+
+@respx.mock
+async def test_a_failed_conversion_does_not_leave_an_empty_temp_directory_behind(tmp_path):
+    before = _temp_dirs()
+    unparseable = b"\xff\xfe\x00\x01\x80\x81\x82\x83" * 2000
+    respx.get(URL).mock(return_value=httpx.Response(200, content=unparseable))
+    with pytest.raises(ResourceNotQueryable):
+        await build(tmp_path).parquet_for(resource(size=None), {URL})
+    assert _temp_dirs() == before
+
+
+def test_a_client_that_follows_redirects_is_refused_at_construction(tmp_path):
+    """_download's SSRF guard re-validates every redirect hop itself, which only
+    works because it sees every hop. A client built with follow_redirects=True
+    would follow redirects internally, so that re-validation would never run and the
+    guard would be silently bypassed -- this must fail loudly at construction instead.
+    """
+    settings = Settings()
+    blobs = BlobCache(
+        tmp_path / "blobs", settings.materialisation_ttl_seconds, settings.cache_max_bytes
+    )
+    with pytest.raises(ValueError, match="follow_redirects"):
+        Materialiser(httpx.AsyncClient(follow_redirects=True), settings, blobs)
+
+
+@respx.mock
+async def test_a_stalled_download_is_stopped_by_the_resource_budget(tmp_path):
+    """download_timeout_seconds is httpx's per-phase timeout, not a wall-clock cap --
+    a slow-trickle upstream can hold a connection open well past it without ever
+    tripping a phase timeout or the byte ceiling. resource_budget_seconds is the
+    total per-resource wall-clock cap that closes that gap.
+    """
+
+    async def stall(request: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(0.3)
+        return httpx.Response(200, content=CSV)
+
+    respx.get(URL).mock(side_effect=stall)
+    settings = Settings(resource_budget_seconds=0.05)
+    with pytest.raises(DownloadFailed, match="resource budget"):
+        await build(tmp_path, settings).parquet_for(resource(), {URL})

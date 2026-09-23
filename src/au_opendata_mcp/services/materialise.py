@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import logging
 import tempfile
@@ -30,6 +31,18 @@ TABULAR_READERS: dict[str, str] = {
 
 class Materialiser:
     def __init__(self, http: httpx.AsyncClient, settings: Settings, blobs: BlobCache) -> None:
+        if http.follow_redirects:
+            # _download's SSRF guard only works because it sees every redirect hop and
+            # re-validates it itself. If httpx follows redirects internally, that loop
+            # never runs and the final -- possibly private -- address is never checked.
+            # Fail loudly (not an assert, which vanishes under python -O) rather than
+            # let this invariant rot silently across files.
+            raise ValueError(
+                "Materialiser requires an httpx.AsyncClient constructed with "
+                "follow_redirects=False: _download re-validates SSRF safety on every "
+                "redirect hop itself, and a client that follows redirects internally "
+                "would silently bypass that guard."
+            )
         self.http = http
         self.settings = settings
         self.blobs = blobs
@@ -61,16 +74,38 @@ class Materialiser:
         key = self.cache_key(resource, portal, last_modified)
         cached = self.blobs.path_for(key)
         if cached is not None:
+            # A cache hit must return before the resource budget applies -- a cached
+            # resource is not downloaded at all, so it must not be subject to a
+            # download timeout.
             log.info("materialise cache hit resource_id=%s", resource.resource_id)
             return cached
 
         assert_url_in_catalog(resource.url, catalog_urls)
-        downloaded = await self._download(resource.url)
         try:
-            parquet = self._convert(downloaded, reader, resource.url)
+            parquet = await asyncio.wait_for(
+                self._fetch_and_convert(resource.url, reader),
+                timeout=self.settings.resource_budget_seconds,
+            )
+        except TimeoutError as exc:
+            raise DownloadFailed(
+                f"materialising {resource.url} exceeded the "
+                f"{self.settings.resource_budget_seconds:.0f}s total resource budget",
+                remedy_url=resource.url,
+            ) from exc
+        return self.blobs.store(key, parquet)
+
+    async def _fetch_and_convert(self, url: str, reader: str) -> Path:
+        """Download and convert one resource. Wrapped by parquet_for in the overall
+        per-resource time budget -- httpx's download_timeout_seconds is only a
+        per-phase timeout, not a wall-clock cap, so a slow-trickle upstream (or a long
+        redirect chain) could otherwise hold this open well past the budget without
+        ever tripping a phase timeout or the byte ceiling.
+        """
+        downloaded = await self._download(url)
+        try:
+            return self._convert(downloaded, reader, url)
         finally:
             downloaded.unlink(missing_ok=True)
-        return self.blobs.store(key, parquet)
 
     async def _download(self, url: str) -> Path:
         """Stream to a temp file under a hard byte ceiling, re-validating every redirect hop.
@@ -143,39 +178,54 @@ class Materialiser:
         return dest
 
     def _convert(self, source: Path, reader: str, remedy_url: str) -> Path:
-        dest = Path(tempfile.mkdtemp()) / "materialised.parquet"
-        con = duckdb.connect()
-        con.execute(f"SET memory_limit = '{self.settings.duckdb_memory_limit}'")
+        """Convert the downloaded file to Parquet at a fresh temp path.
 
-        if reader == "excel":
+        Reserves the destination path with NamedTemporaryFile (not mkdtemp): a
+        directory created just to hold one file, with only the file moved out on
+        success, leaves an empty directory behind forever -- on every successful
+        conversion, not just failed ones. A single temp file, deleted in the except
+        clause on any failure, has no such residue.
+        """
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".parquet") as handle:
+            dest = Path(handle.name)
+
+        con = duckdb.connect()
+        try:
+            con.execute(f"SET memory_limit = '{self.settings.duckdb_memory_limit}'")
+
+            if reader == "excel":
+                try:
+                    con.execute("INSTALL excel")
+                    con.execute("LOAD excel")
+                except duckdb.Error as exc:
+                    raise ResourceNotQueryable(
+                        "XLSX support needs DuckDB's excel extension, which could not be "
+                        f"loaded: {exc}",
+                        remedy_url=remedy_url,
+                    ) from exc
+                expression = f"SELECT * FROM read_xlsx('{source}')"
+            else:
+                # The encoding must be picked before calling DuckDB, not discovered by
+                # retrying on failure: with ignore_errors=true DuckDB does not raise
+                # when a row fails to decode under the wrong encoding, it silently
+                # drops that row. A retry-on-exception fallback would therefore never
+                # fire and a Café row would just vanish instead of being read
+                # correctly under latin-1.
+                encoding = _pick_csv_encoding(source)
+                expression = (
+                    f"SELECT * FROM read_csv_auto('{source}', ignore_errors=true, "
+                    f"sample_size=-1, encoding='{encoding}')"
+                )
+
             try:
-                con.execute("INSTALL excel")
-                con.execute("LOAD excel")
+                con.execute(f"COPY ({expression}) TO '{dest}' (FORMAT PARQUET)")
             except duckdb.Error as exc:
                 raise ResourceNotQueryable(
-                    "XLSX support needs DuckDB's excel extension, which could not be "
-                    f"loaded: {exc}",
-                    remedy_url=remedy_url,
+                    f"resource could not be parsed as a table: {exc}", remedy_url=remedy_url
                 ) from exc
-            expression = f"SELECT * FROM read_xlsx('{source}')"
-        else:
-            # The encoding must be picked before calling DuckDB, not discovered by
-            # retrying on failure: with ignore_errors=true DuckDB does not raise when a
-            # row fails to decode under the wrong encoding, it silently drops that row.
-            # A retry-on-exception fallback would therefore never fire and a Café row
-            # would just vanish instead of being read correctly under latin-1.
-            encoding = _pick_csv_encoding(source)
-            expression = (
-                f"SELECT * FROM read_csv_auto('{source}', ignore_errors=true, "
-                f"sample_size=-1, encoding='{encoding}')"
-            )
-
-        try:
-            con.execute(f"COPY ({expression}) TO '{dest}' (FORMAT PARQUET)")
-        except duckdb.Error as exc:
-            raise ResourceNotQueryable(
-                f"resource could not be parsed as a table: {exc}", remedy_url=remedy_url
-            ) from exc
+        except BaseException:
+            dest.unlink(missing_ok=True)
+            raise
         finally:
             con.close()
 
