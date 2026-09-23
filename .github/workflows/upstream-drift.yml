@@ -5,7 +5,7 @@ name: Upstream drift
 # "my tests pass" is not the same claim as "the thing still works".
 on:
   schedule:
-    - cron: "0 20 * * 0"   # Mondays, 07:00 Adelaide time
+    - cron: "30 21 * * 0"   # Sundays 21:30 UTC = Mondays 07:00 Adelaide (08:00 during daylight saving)
   workflow_dispatch:
 
 jobs:
