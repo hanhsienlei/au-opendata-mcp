@@ -1,5 +1,7 @@
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
+# Runs as root deliberately: this is a self-hosted tool for local/single-operator use, not a
+# hardened production deployment, so no non-root user or distroless base is set up here.
 WORKDIR /app
 
 # Dependencies first, so a source change does not invalidate the dependency layer.
