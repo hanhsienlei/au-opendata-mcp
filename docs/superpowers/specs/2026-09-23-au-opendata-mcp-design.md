@@ -127,10 +127,15 @@ a download link, not a dead end.
 
 ### 4.3 Attribution as a type
 
-All result models inherit from a `Sourced` base carrying `dataset_url`,
-`organisation` and `licence`. There is no un-sourced result model, so a tool cannot
-return a result without attribution. The PRD's CC BY requirement is therefore
-structural rather than a convention to be remembered in ten places.
+Every result model that surfaces **dataset content or dataset metadata** inherits from a
+`Sourced` base carrying `dataset_url`, `organisation` and `licence`: `DatasetSummary`,
+`DatasetDetail`, `PreviewResult` and `QueryResult`. There is no un-sourced version of these
+types, so a tool cannot return portal data without attribution. The PRD's CC BY requirement
+is therefore structural rather than a convention to be remembered in ten places.
+
+`Sourced` deliberately does **not** apply to `PortalInfo` or `OrganizationSummary` — a list
+of publisher names is not licensed data — nor to the §7 utility tools, whose results are
+computed rather than retrieved. CC BY attaches to the data.
 
 ### 4.4 Transports and app assembly
 
