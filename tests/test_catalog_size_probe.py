@@ -50,6 +50,7 @@ async def test_head_resolves_an_unknown_size_into_queryable_yes():
     resource = (await build_service().get_dataset("d")).resources[0]
     assert resource.queryable == "yes"
     assert resource.size_bytes == 4096
+    assert resource.queryable_reason is None
 
 
 @respx.mock
@@ -114,3 +115,24 @@ async def test_size_minus_one_is_probed_and_resolved():
     resource = (await build_service().get_dataset("d")).resources[0]
     assert resource.queryable == "yes"
     assert resource.size_bytes == 4096
+    assert resource.queryable_reason is None
+
+
+@respx.mock
+async def test_head_uses_the_dedicated_5_second_timeout():
+    """Verify the HEAD probe uses head_timeout_seconds (5s), not upstream_timeout_seconds (15s).
+    This is critical for keepingget_dataset responsive when probing stalled resources."""
+    respx.get(url__startswith="https://data.gov.au/data/api/3/action/package_show").mock(
+        return_value=httpx.Response(200, json=dataset_with_sizeless_csv())
+    )
+    head_route = respx.head("https://x.org/stops.csv").mock(
+        return_value=httpx.Response(200, headers={"content-length": "4096"})
+    )
+    await build_service().get_dataset("d")
+    # Verify the HEAD request was made and had the correct timeout
+    assert head_route.call_count == 1
+    timeout = head_route.calls[0].request.extensions["timeout"]
+    assert timeout["connect"] == SETTINGS.head_timeout_seconds
+    assert timeout["read"] == SETTINGS.head_timeout_seconds
+    assert timeout["write"] == SETTINGS.head_timeout_seconds
+    assert timeout["pool"] == SETTINGS.head_timeout_seconds
