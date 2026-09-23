@@ -76,6 +76,24 @@ async def test_a_non_datastore_resource_materialises_and_says_so(tmp_path):
     assert result.total_rows == 3
 
 
+LARGE_CSV = ("suburb,price\n" + "".join(f"Suburb{i},{i}\n" for i in range(25))).encode()
+
+
+@respx.mock
+async def test_preview_total_rows_comes_from_the_file_not_the_returned_page(tmp_path):
+    """total_rows must reflect the whole file, not len(rows) after the limit clamps it."""
+    respx.get(url__startswith="https://data.gov.au/data/api/3/action/resource_show").mock(
+        return_value=httpx.Response(200, json=RESOURCE_SHOW)
+    )
+    respx.get(url__startswith="https://data.gov.au/data/api/3/action/package_show").mock(
+        return_value=httpx.Response(200, json=PACKAGE_SHOW)
+    )
+    respx.get(RES_URL).mock(return_value=httpx.Response(200, content=LARGE_CSV))
+    result = await build(tmp_path).preview_resource("r1", limit=10)
+    assert result.total_rows == 25
+    assert len(result.rows) == 10
+
+
 @respx.mock
 async def test_preview_then_query_costs_only_one_download(tmp_path):
     """The expensive preview warms the cache for the query that follows it (spec 6.5)."""

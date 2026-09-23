@@ -8,6 +8,7 @@ import duckdb
 import pytest
 
 from au_opendata_mcp.errors import QueryTimeout, SqlRejected
+from au_opendata_mcp.services import query as query_module
 from au_opendata_mcp.services.query import execute_in_sandbox, jsonable, run_sandboxed_query
 
 # A recursive CTE that never references `t` at all -- it passes validate_sql (a single
@@ -183,3 +184,36 @@ async def test_run_sandboxed_query_returns_normal_results(parquet):
     )
     assert rows == [{"n": 3}]
     assert truncated is False
+
+
+async def test_read_parquet_row_count_reads_the_file_footer(parquet):
+    assert await query_module.read_parquet_row_count(parquet) == 3
+
+
+async def test_read_parquet_row_count_runs_off_the_event_loop(parquet, monkeypatch):
+    """Pins the asyncio.to_thread hop in read_parquet_row_count (Task 11 fix): without it,
+    this test would hang for the full duration of the stand-in slow read instead of the
+    ticker advancing concurrently, the same way test_the_event_loop_stays_responsive_...
+    pins it for run_sandboxed_query."""
+
+    def slow_row_count(path: Path) -> int:
+        time.sleep(0.3)
+        return 3
+
+    monkeypatch.setattr(query_module, "_read_parquet_row_count", slow_row_count)
+
+    ticks = 0
+
+    async def ticker() -> None:
+        nonlocal ticks
+        for _ in range(10):
+            await asyncio.sleep(0.05)
+            ticks += 1
+
+    ticker_task = asyncio.create_task(ticker())
+    result = await query_module.read_parquet_row_count(parquet)
+    await ticker_task
+    assert result == 3
+    # 0.3s of blocking read time at 0.05s per tick should allow at least a handful of
+    # ticks if the event loop kept running concurrently with the worker thread.
+    assert ticks >= 4

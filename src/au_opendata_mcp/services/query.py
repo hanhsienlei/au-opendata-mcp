@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from au_opendata_mcp.ckan.client import CkanClient, strip_internal_columns
 from au_opendata_mcp.ckan.models import CkanResource
 from au_opendata_mcp.config import Settings
-from au_opendata_mcp.errors import QueryTimeout, ResourceNotFound, SqlRejected
+from au_opendata_mcp.errors import AuOpenDataError, QueryTimeout, ResourceNotFound, SqlRejected
 from au_opendata_mcp.models import Sourced
 from au_opendata_mcp.safety import validate_sql, wrap_with_limit
 from au_opendata_mcp.services.catalog import (
@@ -177,6 +177,43 @@ async def run_sandboxed_query(
     )
 
 
+def _read_parquet_row_count(parquet: Path) -> int:
+    """Read the exact row count straight from the Parquet file's own footer metadata.
+
+    Deliberately NOT run through the sandbox in `execute_in_sandbox`: `parquet_file_metadata`
+    requires external file access, which the sandbox revokes (`enable_external_access =
+    false`) as its core security control (see `execute_in_sandbox`'s docstring), and calling
+    it inside the sandbox raises `duckdb.PermissionException`. That lockdown exists to
+    contain caller-supplied SQL; it has nothing to protect here, because `parquet` is our own
+    trusted artifact written by `materialise.py`, not caller SQL. A plain, unlocked
+    connection reads only the footer -- no `SET`, no `CREATE TABLE`, no scan of the data --
+    so it is also far cheaper than the `COUNT(*)` full scan this replaces, and (unlike that
+    scan) it does not consume any part of the caller's query time budget.
+
+    Confirmed empirically on DuckDB 1.5.5: `parquet_file_metadata` returns one row per file
+    with `num_rows` already the file's total row count, not one row per row group.
+    """
+    con = duckdb.connect()
+    try:
+        row = con.execute(
+            "SELECT num_rows FROM parquet_file_metadata(?)", [str(parquet)]
+        ).fetchone()
+        return int(row[0]) if row is not None else 0
+    finally:
+        con.close()
+
+
+async def read_parquet_row_count(parquet: Path) -> int:
+    """Run `_read_parquet_row_count` off the event loop -- it is still a blocking DuckDB call.
+
+    Cheap as this metadata read is, it is not free, and it still holds the GIL while DuckDB's
+    C++ layer does the footer read -- so it goes through `asyncio.to_thread` for the same
+    reason `run_sandboxed_query` does: no blocking DuckDB call may run directly on the event
+    loop, no matter how fast it usually is.
+    """
+    return await asyncio.to_thread(_read_parquet_row_count, parquet)
+
+
 class QueryService:
     def __init__(
         self,
@@ -282,7 +319,13 @@ class QueryService:
         if resolved.resource.datastore_active:
             try:
                 return await self._preview_from_datastore(resolved, portal, capped)
-            except Exception as exc:  # DataStore is a fast path, not a hard dependency
+            except AuOpenDataError as exc:
+                # DataStore is a fast path, not a hard dependency: fall back to
+                # materialising on a genuine upstream failure (UpstreamUnavailable,
+                # ResourceNotFound). Deliberately NOT `except Exception` -- that would
+                # also swallow a real bug (a KeyError on a malformed field, a
+                # pydantic.ValidationError building PreviewResult) and silently mask it
+                # as "DataStore didn't work" instead of surfacing it.
                 log.info("datastore preview failed for %s, materialising: %s", resource_id, exc)
 
         return await self._preview_from_parquet(resolved, portal, capped)
@@ -322,20 +365,18 @@ class QueryService:
             self.settings.duckdb_memory_limit,
             self.settings.query_timeout_seconds,
         )
-        _, count_rows, _ = await run_sandboxed_query(
-            parquet,
-            "SELECT count(*) AS n FROM t",
-            1,
-            self.settings.duckdb_memory_limit,
-            self.settings.query_timeout_seconds,
-        )
+        # Row count comes from the Parquet footer, not a second sandboxed COUNT(*): that
+        # would double the memory/IO of loading the whole file and -- because each sandbox
+        # call gets its own full timeout budget -- would let a preview legitimately take up
+        # to 2x query_timeout_seconds. See read_parquet_row_count's docstring.
+        total_rows = await read_parquet_row_count(parquet)
         return PreviewResult(
             resource_id=resolved.resource.resource_id,
             portal=portal,
             source="materialised",
             columns=columns,
             rows=rows,
-            total_rows=int(count_rows[0]["n"]) if count_rows else None,
+            total_rows=total_rows,
             dataset_url=resolved.dataset.dataset_url,
             organisation=resolved.dataset.organisation,
             licence=resolved.dataset.licence,
