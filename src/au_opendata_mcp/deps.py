@@ -3,6 +3,7 @@ from functools import lru_cache
 
 import httpx
 
+from au_opendata_mcp.cache import MetadataCache
 from au_opendata_mcp.ckan.client import CkanClient
 from au_opendata_mcp.config import Settings, get_settings
 from au_opendata_mcp.portals import all_portals
@@ -20,7 +21,13 @@ class Services:
 def get_services() -> Services:
     settings = get_settings()
     http = httpx.AsyncClient(follow_redirects=False, headers={"User-Agent": "au-opendata-mcp/0.1"})
-    clients = {p.id: CkanClient(p, http, settings) for p in all_portals()}
+    # Shared across portals: safe because CkanClient's cache key includes the portal id,
+    # so data.gov.au and data.sa.gov.au never serve each other's responses.
+    metadata_cache = MetadataCache(
+        max_entries=settings.metadata_cache_max_entries,
+        ttl_seconds=settings.metadata_ttl_seconds,
+    )
+    clients = {p.id: CkanClient(p, http, settings, cache=metadata_cache) for p in all_portals()}
     return Services(settings=settings, http=http, catalog=CatalogService(clients, settings))
 
 
