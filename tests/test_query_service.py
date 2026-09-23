@@ -122,3 +122,14 @@ async def test_the_second_query_reuses_the_materialised_cache(tmp_path):
     await service.query_resource("r1", "SELECT * FROM t")
     await service.query_resource("r1", "SELECT count(*) AS n FROM t")
     assert download.call_count == 1
+
+
+# --- unknown portal must fail loudly, mirroring CatalogService._client() ---
+
+
+async def test_unknown_portal_raises_value_error_naming_valid_portals_on_query(tmp_path):
+    with pytest.raises(ValueError) as exc:
+        await build(tmp_path).query_resource("r1", "SELECT * FROM t", portal="data.nsw.gov.au")
+    assert "data.nsw.gov.au" in str(exc.value)
+    assert "data.gov.au" in str(exc.value)
+    assert "data.sa.gov.au" in str(exc.value)

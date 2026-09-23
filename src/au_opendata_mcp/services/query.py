@@ -17,6 +17,7 @@ from au_opendata_mcp.ckan.models import CkanResource
 from au_opendata_mcp.config import Settings
 from au_opendata_mcp.errors import AuOpenDataError, QueryTimeout, ResourceNotFound, SqlRejected
 from au_opendata_mcp.models import Sourced
+from au_opendata_mcp.portals import get_portal
 from au_opendata_mcp.safety import validate_sql, wrap_with_limit
 from au_opendata_mcp.services.catalog import (
     CatalogService,
@@ -227,8 +228,16 @@ class QueryService:
         self.materialiser = materialiser
         self.settings = settings
 
+    def _client(self, portal_id: str) -> CkanClient:
+        # Mirrors CatalogService._client(): validate before indexing, so an unknown
+        # portal fails loudly with a ValueError naming the valid options rather than
+        # a bare KeyError -- portal is free-text from a model, so this is a likely
+        # mistake, not an exotic one, and the clean error lets the model self-correct.
+        get_portal(portal_id)
+        return self.clients[portal_id]
+
     async def resolve(self, resource_id: str, portal: str = "data.gov.au") -> ResolvedResource:
-        raw = await self.clients[portal].action("resource_show", {"id": resource_id})
+        raw = await self._client(portal).action("resource_show", {"id": resource_id})
         package_id = raw.get("package_id")
         if not package_id:
             raise ResourceNotFound(
@@ -333,7 +342,7 @@ class QueryService:
     async def _preview_from_datastore(
         self, resolved: ResolvedResource, portal: str, limit: int
     ) -> PreviewResult:
-        result = await self.clients[portal].action(
+        result = await self._client(portal).action(
             "datastore_search", {"resource_id": resolved.resource.resource_id, "limit": limit}
         )
         fields = result.get("fields", [])

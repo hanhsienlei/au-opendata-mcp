@@ -1,4 +1,5 @@
 import httpx
+import pytest
 import respx
 
 from tests.test_query_service import CSV, PACKAGE_SHOW, RES_URL, RESOURCE_SHOW, build
@@ -129,3 +130,14 @@ async def test_preview_falls_back_to_materialising_when_datastore_search_fails(t
     respx.get(RES_URL).mock(return_value=httpx.Response(200, content=CSV))
     result = await build(tmp_path).preview_resource("r1")
     assert result.source == "materialised"
+
+
+# --- unknown portal must fail loudly, mirroring CatalogService._client() ---
+
+
+async def test_unknown_portal_raises_value_error_naming_valid_portals_on_preview(tmp_path):
+    with pytest.raises(ValueError) as exc:
+        await build(tmp_path).preview_resource("r1", portal="data.nsw.gov.au")
+    assert "data.nsw.gov.au" in str(exc.value)
+    assert "data.gov.au" in str(exc.value)
+    assert "data.sa.gov.au" in str(exc.value)

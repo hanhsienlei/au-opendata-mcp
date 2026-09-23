@@ -49,6 +49,31 @@ def test_rest_preview_endpoint_returns_columns():
     assert [col["name"] for col in r.json()["columns"]] == ["suburb", "price"]
 
 
+@respx.mock
+def test_rest_query_endpoint_rejects_unknown_portal_with_400_not_500():
+    with TestClient(create_app()) as c:
+        r = c.post(
+            "/api/resources/r1/query",
+            json={"sql": "SELECT * FROM t", "portal": "data.nsw.gov.au"},
+        )
+    assert r.status_code == 400
+    detail = r.json()["detail"]
+    assert "data.nsw.gov.au" in detail
+    assert "data.gov.au" in detail
+    assert "data.sa.gov.au" in detail
+
+
+@respx.mock
+def test_rest_preview_endpoint_rejects_unknown_portal_with_400_not_500():
+    with TestClient(create_app()) as c:
+        r = c.get("/api/resources/r1/preview", params={"portal": "data.nsw.gov.au"})
+    assert r.status_code == 400
+    detail = r.json()["detail"]
+    assert "data.nsw.gov.au" in detail
+    assert "data.gov.au" in detail
+    assert "data.sa.gov.au" in detail
+
+
 def test_mcp_tool_descriptions_teach_the_dialect_and_table_name():
     """Spec section 5.3: the description is the prompt. A model that guesses costs a round trip."""
     from au_opendata_mcp.mcp_server import query_resource
