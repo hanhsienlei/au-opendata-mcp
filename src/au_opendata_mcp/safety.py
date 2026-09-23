@@ -3,7 +3,10 @@ import socket
 from collections.abc import Callable, Collection
 from urllib.parse import urlparse
 
-from au_opendata_mcp.errors import DownloadFailed
+import sqlglot
+from sqlglot import exp
+
+from au_opendata_mcp.errors import DownloadFailed, SqlRejected
 
 SAFE_SCHEMES = frozenset({"http", "https"})
 MAX_REDIRECTS = 5
@@ -58,3 +61,74 @@ def assert_url_in_catalog(url: str, catalog_urls: Collection[str]) -> None:
         raise DownloadFailed(
             "refusing to fetch a URL that is not listed in the dataset's catalog metadata"
         )
+
+
+QUERY_TABLE = "t"
+
+# Table-valued and file-reading functions. The DuckDB lockdown in services/query.py is the
+# real defence; this makes the rejection message specific instead of a PermissionException.
+DENIED_FUNCTIONS = frozenset(
+    {
+        "read_csv",
+        "read_csv_auto",
+        "read_parquet",
+        "read_json",
+        "read_json_auto",
+        "read_ndjson",
+        "read_text",
+        "read_blob",
+        "glob",
+        "parquet_scan",
+        "csv_scan",
+    }
+)
+
+
+def validate_sql(sql: str) -> str:
+    """Accept a single read-only DuckDB query over the table `t`. Reject everything else.
+
+    Parsing rather than pattern matching, because comments, string literals and stacked
+    statements all defeat pattern matching.
+    """
+    if not sql or not sql.strip():
+        raise SqlRejected("SQL is empty")
+
+    try:
+        parsed = sqlglot.parse(sql, read="duckdb")
+    except sqlglot.ParseError as exc:
+        raise SqlRejected(f"could not parse SQL as DuckDB: {exc}") from exc
+
+    # Do not filter out None entries: sqlglot yields one for each empty statement between
+    # consecutive semicolons (e.g. "SELECT * FROM t;;" parses to [Select, None]), and that
+    # must count as a second statement rather than be silently dropped.
+    if len(parsed) != 1:
+        raise SqlRejected(
+            f"expected exactly one statement, found {len(parsed)}; submit a single SELECT"
+        )
+
+    tree = parsed[0]
+    if not isinstance(tree, exp.Query):
+        raise SqlRejected(
+            f"only SELECT queries are allowed; this is a {type(tree).__name__.upper()} statement"
+        )
+
+    allowed_tables = {QUERY_TABLE} | {cte.alias_or_name for cte in tree.find_all(exp.CTE)}
+    for table in tree.find_all(exp.Table):
+        if table.name not in allowed_tables:
+            shown = table.name or "a table-valued function"
+            raise SqlRejected(f"only the table {QUERY_TABLE!r} may be queried; found {shown!r}")
+
+    for func in tree.find_all(exp.Anonymous):
+        # Use .name — .sql_name() returns the literal string "ANONYMOUS" and is useless here.
+        if func.name.lower() in DENIED_FUNCTIONS:
+            raise SqlRejected(f"the function {func.name}() is not allowed")
+
+    return tree.sql(dialect="duckdb")
+
+
+def wrap_with_limit(sql: str, limit: int) -> str:
+    """Enforce the row cap by wrapping. The caller's query is never rewritten.
+
+    One extra row is requested so truncation can be detected.
+    """
+    return f"SELECT * FROM ({sql}) LIMIT {limit + 1}"
