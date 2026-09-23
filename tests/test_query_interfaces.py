@@ -83,3 +83,15 @@ def test_mcp_tool_descriptions_teach_the_dialect_and_table_name():
     assert "`t`" in doc or " t " in doc
     assert "SELECT" in doc
     assert "FROM t" in doc  # a worked example is present
+
+
+def test_abn_and_financial_year_are_reachable_over_rest():
+    with TestClient(create_app()) as c:
+        assert c.get("/api/tools/abn/51824753556").json()["valid"] is True
+        fy = c.get("/api/tools/financial-year", params={"date": "2026-09-23"}).json()
+        assert fy["label"] == "FY2026–27"
+
+
+def test_an_unparseable_date_is_a_400_not_a_500():
+    with TestClient(create_app()) as c:
+        assert c.get("/api/tools/financial-year", params={"date": "nope"}).status_code == 400

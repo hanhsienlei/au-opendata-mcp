@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from au_opendata_mcp.api import STATUS_FOR, router
+from au_opendata_mcp.api import STATUS_FOR, router, tools_router
 from au_opendata_mcp.deps import close_services
 from au_opendata_mcp.errors import AuOpenDataError
 from au_opendata_mcp.mcp_server import mcp
@@ -49,6 +49,7 @@ def create_app() -> FastAPI:
         return JSONResponse(status_code=400, content={"detail": str(exc)})
 
     app.include_router(router)
+    app.include_router(tools_router)
     app.mount("/mcp", mcp_app)
     return app
 

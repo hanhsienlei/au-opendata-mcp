@@ -5,6 +5,7 @@ from fastmcp.exceptions import ToolError
 
 from au_opendata_mcp.deps import get_services
 from au_opendata_mcp.errors import AuOpenDataError
+from au_opendata_mcp.services import au_tools
 
 mcp: FastMCP = FastMCP(
     name="au-opendata-mcp",
@@ -155,3 +156,35 @@ async def query_resource(
         raise ToolError(str(exc)) from exc
     except AuOpenDataError as exc:
         raise _fail(exc) from exc
+
+
+@mcp.tool
+def validate_abn(abn: str) -> dict[str, Any]:
+    """Validate an Australian Business Number against the ATO's official checksum.
+
+    Use this instead of judging an ABN yourself — the check is a deterministic
+    modulus-89 calculation and guessing gets it wrong.
+
+    Args:
+        abn: 11 digits, with or without spaces or hyphens.
+
+    Returns whether it is valid, the conventional "NN NNN NNN NNN" formatting if so,
+    and the specific reason if not."""
+    return au_tools.validate_abn(abn).model_dump()
+
+
+@mcp.tool
+def au_financial_year(date: str) -> dict[str, Any]:
+    """Map a date to the Australian financial year, which runs 1 July to 30 June.
+
+    Use this whenever a question involves an Australian financial year, rather than
+    assuming a calendar year.
+
+    Args:
+        date: A date as YYYY-MM-DD.
+
+    Returns e.g. label "FY2026–27" with its start and end dates."""
+    try:
+        return au_tools.au_financial_year(date).model_dump()
+    except ValueError as exc:
+        raise ToolError(str(exc)) from exc

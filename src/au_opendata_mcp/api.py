@@ -14,6 +14,7 @@ from au_opendata_mcp.errors import (
     SqlRejected,
     UpstreamUnavailable,
 )
+from au_opendata_mcp.services import au_tools as au_tools_service
 
 STATUS_FOR: dict[type[AuOpenDataError], int] = {
     ResourceNotFound: 404,
@@ -80,3 +81,16 @@ async def query(resource_id: str, body: QueryRequest) -> dict[str, Any]:
         resource_id, body.sql, body.portal, body.limit
     )
     return result.model_dump()
+
+
+tools_router = APIRouter(prefix="/api/tools", tags=["australian tools"])
+
+
+@tools_router.get("/abn/{abn}")
+async def abn(abn: str) -> dict[str, Any]:
+    return au_tools_service.validate_abn(abn).model_dump()
+
+
+@tools_router.get("/financial-year")
+async def financial_year(date: str) -> dict[str, Any]:
+    return au_tools_service.au_financial_year(date).model_dump()
