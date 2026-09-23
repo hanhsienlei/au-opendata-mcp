@@ -1,0 +1,20 @@
+name: Upstream drift
+
+# The live contract tests hit data.gov.au and data.sa.gov.au. They are kept out of PR CI
+# so a third party's downtime cannot block a pull request, but they must still run, because
+# "my tests pass" is not the same claim as "the thing still works".
+on:
+  schedule:
+    - cron: "0 20 * * 0"   # Mondays, 07:00 Adelaide time
+  workflow_dispatch:
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv python install 3.12
+      - run: uv sync --frozen
+      - name: Run the live contract tests
+        run: uv run pytest -m live -v

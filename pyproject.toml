@@ -48,3 +48,11 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 python_version = "3.12"
 strict = true
 files = ["src/au_opendata_mcp/services", "src/au_opendata_mcp/ckan"]
+
+[tool.coverage.run]
+source = ["src/au_opendata_mcp/services"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
