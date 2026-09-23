@@ -37,6 +37,21 @@ class CkanClient:
         return f"{self.portal.id}:{name}:{json.dumps(params, sort_keys=True, default=str)}"
 
     async def action(self, name: str, params: dict[str, Any]) -> Any:
+        """Call a CKAN action and return its `result` payload.
+
+        On a cache hit, the returned object is the **live cached object**, not a copy —
+        it may be shared with other callers (including concurrent ones) and must not be
+        mutated. A caller that needs to mutate the result should copy at its own call
+        site (e.g. `dict(result)`), and only if it actually needs to. We deliberately do
+        not deep-copy on every hit: some actions (e.g. `datastore_search`) can return
+        thousands of rows, and copying on the fast path would defeat much of the point
+        of caching them.
+
+        Only successful CKAN responses are cached. A 4xx/5xx HTTP status, a transport
+        error, and a CKAN `{"success": false}` body are never cached — each of those
+        raises before the single `cache.set` call below is reached, so a failed call
+        never poisons the cache for a subsequent successful one.
+        """
         cache_key = self._cache_key(name, params) if self.cache is not None else None
         if self.cache is not None and cache_key is not None:
             cached = self.cache.get(cache_key)

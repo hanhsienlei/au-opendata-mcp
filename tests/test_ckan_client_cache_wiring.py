@@ -16,6 +16,7 @@ import respx
 from au_opendata_mcp.cache import MetadataCache
 from au_opendata_mcp.ckan.client import CkanClient
 from au_opendata_mcp.config import Settings
+from au_opendata_mcp.errors import UpstreamUnavailable
 from au_opendata_mcp.portals import get_portal
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures" / "ckan"
@@ -106,8 +107,6 @@ async def test_a_failing_call_is_not_cached_so_a_later_success_still_hits_the_ne
     settings = Settings(upstream_retries=0)
     c = CkanClient(get_portal("data.gov.au"), httpx.AsyncClient(), settings, cache=cache)
 
-    from au_opendata_mcp.errors import UpstreamUnavailable
-
     with pytest.raises(UpstreamUnavailable):
         await c.action("package_search", {"q": "x"})
     with pytest.raises(UpstreamUnavailable):
@@ -116,6 +115,23 @@ async def test_a_failing_call_is_not_cached_so_a_later_success_still_hits_the_ne
     result = await c.action("package_search", {"q": "x"})
     assert "results" in result
     assert route.call_count == 3
+
+
+@respx.mock
+async def test_a_transport_error_is_not_cached_so_a_later_success_still_hits_the_network():
+    payload = load("data.gov.au__package_search.json")
+    route = respx.get(url__startswith="https://data.gov.au/data/api/3/action/package_search")
+    route.side_effect = [httpx.ConnectTimeout("timed out"), httpx.Response(200, json=payload)]
+    cache = MetadataCache(max_entries=100, ttl_seconds=3600, clock=FakeClock())
+    settings = Settings(upstream_retries=0)
+    c = CkanClient(get_portal("data.gov.au"), httpx.AsyncClient(), settings, cache=cache)
+
+    with pytest.raises(UpstreamUnavailable):
+        await c.action("package_search", {"q": "x"})
+
+    result = await c.action("package_search", {"q": "x"})
+    assert "results" in result
+    assert route.call_count == 2
 
 
 @respx.mock
