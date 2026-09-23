@@ -1,7 +1,7 @@
 import pytest
 
 from au_opendata_mcp.errors import SqlRejected
-from au_opendata_mcp.safety import validate_sql, wrap_with_limit
+from au_opendata_mcp.safety import DENIED_FUNCTIONS, validate_sql, wrap_with_limit
 
 
 @pytest.mark.parametrize(
@@ -70,6 +70,22 @@ def test_reading_anything_other_than_t_is_rejected(sql):
 def test_a_denied_function_in_a_projection_is_rejected():
     with pytest.raises(SqlRejected, match="not allowed"):
         validate_sql("SELECT read_text('/etc/passwd') FROM t")
+
+
+@pytest.mark.parametrize("fn", sorted(DENIED_FUNCTIONS))
+def test_every_denied_function_is_rejected_in_projection_position(fn):
+    # No FROM clause at all, so the "only the table t" rule cannot catch this — only the
+    # function-name scan can. read_csv and read_parquet get dedicated sqlglot AST classes
+    # (exp.ReadCSV / exp.ReadParquet) instead of exp.Anonymous, which is exactly the case
+    # that slipped past a name-scan restricted to exp.Anonymous nodes.
+    with pytest.raises(SqlRejected):
+        validate_sql(f"SELECT {fn}('/etc/passwd')")
+
+
+@pytest.mark.parametrize("fn", sorted(DENIED_FUNCTIONS))
+def test_every_denied_function_is_rejected_in_from_position(fn):
+    with pytest.raises(SqlRejected):
+        validate_sql(f"SELECT * FROM {fn}('/etc/passwd')")
 
 
 def test_unparseable_sql_is_rejected_with_the_parser_message():

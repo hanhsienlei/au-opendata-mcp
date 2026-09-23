@@ -83,6 +83,24 @@ DENIED_FUNCTIONS = frozenset(
     }
 )
 
+# sqlglot gives some functions a dedicated AST class instead of exp.Anonymous — verified for
+# read_csv -> exp.ReadCSV and read_parquet -> exp.ReadParquet; every other DENIED_FUNCTIONS
+# name still resolves to exp.Anonymous. Checked by type here, not just by name, so a future
+# sqlglot version that promotes another denied name to its own class still cannot slip
+# through: the name-based check alone is tied to today's sqlglot AST shape.
+DENIED_FUNCTION_TYPES: tuple[type[exp.Func], ...] = (exp.ReadCSV, exp.ReadParquet)
+
+
+def _func_name(node: exp.Func) -> str:
+    """Resolve a function node's name uniformly across exp.Anonymous and dedicated classes.
+
+    exp.Anonymous.sql_name() returns the literal string "ANONYMOUS" and is useless — use
+    .name instead. Dedicated classes (e.g. exp.ReadCSV) have no meaningful .name, but their
+    .sql_name() gives the real SQL keyword (e.g. "READ_CSV").
+    """
+    name = node.name if isinstance(node, exp.Anonymous) else node.sql_name()
+    return name.lower()
+
 
 def validate_sql(sql: str) -> str:
     """Accept a single read-only DuckDB query over the table `t`. Reject everything else.
@@ -118,10 +136,9 @@ def validate_sql(sql: str) -> str:
             shown = table.name or "a table-valued function"
             raise SqlRejected(f"only the table {QUERY_TABLE!r} may be queried; found {shown!r}")
 
-    for func in tree.find_all(exp.Anonymous):
-        # Use .name — .sql_name() returns the literal string "ANONYMOUS" and is useless here.
-        if func.name.lower() in DENIED_FUNCTIONS:
-            raise SqlRejected(f"the function {func.name}() is not allowed")
+    for func in tree.find_all(exp.Func):
+        if isinstance(func, DENIED_FUNCTION_TYPES) or _func_name(func) in DENIED_FUNCTIONS:
+            raise SqlRejected(f"the function {_func_name(func)}() is not allowed")
 
     return tree.sql(dialect="duckdb")
 
