@@ -1,8 +1,12 @@
 name: CI
 
 on:
+  # Both, deliberately: this repository's default branch is `master`, while `main` is
+  # GitHub's default for new ones. Listing only one means a post-merge push to the
+  # default branch runs nothing -- and the README presents CI as the proof behind the
+  # 80% coverage gate.
   push:
-    branches: [main]
+    branches: [main, master]
   pull_request:
 
 jobs:

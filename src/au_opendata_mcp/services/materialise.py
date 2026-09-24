@@ -110,7 +110,14 @@ class Materialiser:
         """
         downloaded = await self._download(url)
         try:
-            return self._convert(downloaded, reader, url)
+            # Off the event loop, for the same reason run_sandboxed_query hops DuckDB off
+            # it: _convert is a blocking DuckDB COPY, and _pick_csv_encoding reads and
+            # decodes the whole file in memory before that even starts. Measured on a
+            # 90 MB CSV, running it inline blocked the loop for ~1.1s -- every other
+            # concurrent MCP/REST caller stalled behind one conversion. It also gives
+            # parquet_for's asyncio.wait_for an await point, without which the 60s
+            # resource budget cannot fire while a conversion is in progress.
+            return await asyncio.to_thread(self._convert, downloaded, reader, url)
         finally:
             downloaded.unlink(missing_ok=True)
 

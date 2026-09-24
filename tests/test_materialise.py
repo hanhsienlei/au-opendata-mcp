@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import tempfile
 from pathlib import Path
 
@@ -241,3 +242,52 @@ async def test_a_stalled_download_is_stopped_by_the_resource_budget(tmp_path):
     settings = Settings(resource_budget_seconds=0.05)
     with pytest.raises(DownloadFailed, match="resource budget"):
         await build(tmp_path, settings).parquet_for(resource(), {URL})
+
+
+# --- fix (I3): _convert must not run on the event loop.
+# _convert calls DuckDB (blocking) and _pick_csv_encoding reads and decodes the whole file
+# in memory first. Measured before the fix: a 90 MB CSV blocked the loop for 1.09 s and the
+# loop got exactly one tick. It also meant the 60 s resource budget in parquet_for could
+# never fire during conversion -- asyncio.wait_for has no await point to cancel at.
+# This mirrors test_query_execute.py's ticker test for read_parquet_row_count, which is
+# offloaded for a footer read of a few bytes.
+
+
+async def test_the_event_loop_stays_responsive_during_conversion(tmp_path):
+    import time
+
+    m = build(tmp_path)
+    source = tmp_path / "downloaded.csv"
+    source.write_bytes(CSV)
+
+    real_convert = m._convert
+
+    def slow_convert(*args, **kwargs):
+        time.sleep(0.3)  # stands in for a large file's decode + DuckDB COPY
+        return real_convert(*args, **kwargs)
+
+    m._convert = slow_convert  # type: ignore[method-assign]
+
+    async def fake_download(url: str) -> Path:
+        return source
+
+    m._download = fake_download  # type: ignore[method-assign]
+
+    ticks = 0
+
+    async def ticker() -> None:
+        nonlocal ticks
+        for _ in range(20):
+            await asyncio.sleep(0.05)
+            ticks += 1
+
+    ticker_task = asyncio.create_task(ticker())
+    parquet = await m._fetch_and_convert(URL, "csv")
+    ticker_task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await ticker_task
+
+    assert parquet.exists() and parquet.stat().st_size > 0
+    # 0.3s of blocking conversion at 0.05s per tick should allow at least a handful of
+    # ticks if the event loop kept running concurrently with the worker thread.
+    assert ticks >= 4, f"the event loop was blocked during conversion (only {ticks} ticks)"

@@ -74,11 +74,14 @@ Parquet read that loads the table. Caller SQL is parsed with `sqlglot` and must 
 event loop (`asyncio.to_thread`), so one slow or runaway query cannot stall every other
 concurrent request.
 
-**Downloads are constrained.** Only URLs the portal itself published for that resource are
-fetched, http(s) only. Every resolved address is checked for global routability (not just
-private/loopback/link-local, but multicast and CGNAT ranges too) at every redirect hop, and a
-50 MB ceiling is enforced while streaming the response body — never trusted from the
-`content-length` header, which is just a hint.
+**Outbound fetches are constrained.** Only URLs the portal itself published for that resource
+are fetched, http(s) only. Every resolved address is checked for global routability (not just
+private/loopback/link-local, but multicast and CGNAT ranges too). On the download path that
+check runs again at every redirect hop. `get_dataset`'s HEAD size probe runs the same check
+before the one request it makes, and deliberately does not follow redirects — there is no
+second hop to check, and an unfollowed redirect just leaves the size unresolved rather than
+reaching an address nothing validated. A 50 MB ceiling is enforced while streaming the
+response body — never trusted from the `content-length` header, which is just a hint.
 
 **Attribution is structural.** Every result model carrying portal data inherits a base
 (`Sourced`) with `dataset_url`, `organisation` and `licence`. There is no un-sourced result
@@ -128,6 +131,49 @@ the norm for the whole server.
 
 Every result includes its `licence` field — treat an unspecified licence as "unknown," not
 "free to use," and attributing the source when you reuse the data is your responsibility.
+
+## Demo scenarios
+
+Three prompts to paste into Claude Desktop once the config above is in place — catalog
+search, an aggregate query over a real resource, and ABN validation. They name what the user
+wants rather than which tool to call, so what you see is the tool selection a real user would
+get, across the intended chain `search_datasets` → `get_dataset` → `preview_resource` →
+`query_resource`.
+
+These are scenarios to try, not a transcript. As with the evaluation below, they have not
+been run and recorded here, so no output or success rate is reproduced.
+
+**1. Catalog search.**
+
+> Search data.gov.au for datasets about public toilets. Give me the five best matches, and
+> for each one the publisher, the licence, and which file formats it comes in. Flag any
+> where the licence is not specified.
+
+The interesting part is the last sentence: roughly two-thirds of data.gov.au datasets carry
+no licence, and every result model here has a `licence` field precisely so that is visible
+rather than assumed.
+
+**2. An aggregate query over a real resource.**
+
+> On data.gov.au, find a CSV of Australian Government contract notices. Show me the columns
+> first, then run one SQL query that gives me the ten agencies with the highest total
+> contract value. Tell me the source URL and licence of the exact file you queried, and how
+> many rows it has.
+
+This is the full chain: `search_datasets` to find it, `get_dataset` to pick a file that comes
+back `queryable: "yes"`, `preview_resource` to see the real column names — you cannot write
+SQL for columns you have not seen — then a single `SELECT` through `query_resource`. The file
+is downloaded once, converted to Parquet and cached, and the query runs in a locked-down
+in-memory DuckDB over the table `t`.
+
+**3. ABN validation.**
+
+> Is the ABN 51 824 753 556 valid? And which Australian financial year does 2026-03-31 fall
+> in?
+
+`validate_abn` runs the ATO's weighted-modulus checksum (spacing and formatting are
+tolerated), and `au_financial_year` maps the date to the 1 July – 30 June year — neither
+needs a portal, so both answer even if data.gov.au is down.
 
 ## Evaluation
 

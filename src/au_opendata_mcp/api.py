@@ -1,8 +1,9 @@
 from typing import Any
 
 from fastapi import APIRouter, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
+from au_opendata_mcp.config import get_settings
 from au_opendata_mcp.deps import get_services
 from au_opendata_mcp.errors import (
     AuOpenDataError,
@@ -26,6 +27,20 @@ STATUS_FOR: dict[type[AuOpenDataError], int] = {
     QueryTimeout: 504,
 }
 
+# The service layer already clamps every limit against Settings. REST used to hardcode
+# its own ceilings next to it (and leave QueryRequest.limit unbounded), so the two adapters
+# disagreed about who owns the limit -- harmless while the numbers happened to match, and a
+# silent divergence the moment a Settings default moved. FastAPI/pydantic evaluate these
+# constraints at import time, so they are read once here rather than per request; Settings
+# is itself lru_cached and read from the environment.
+_LIMITS = get_settings()
+
+
+def _default(preferred: int, ceiling: int) -> int:
+    """A default can never exceed its own ceiling, however low the ceiling is configured."""
+    return min(preferred, ceiling)
+
+
 router = APIRouter(prefix="/api", tags=["catalog"])
 
 
@@ -40,7 +55,7 @@ async def datasets(
     portal: str = "data.gov.au",
     organisation: str | None = None,
     format: str | None = None,
-    limit: int = Query(20, ge=1, le=50),
+    limit: int = Query(_default(20, _LIMITS.max_search_limit), ge=1, le=_LIMITS.max_search_limit),
 ) -> list[dict[str, Any]]:
     results = await get_services().catalog.search_datasets(
         q=q, portal=portal, organisation=organisation, format=format, limit=limit
@@ -62,14 +77,16 @@ async def organizations(portal: str = "data.gov.au", q: str | None = None) -> li
 class QueryRequest(BaseModel):
     sql: str
     portal: str = "data.gov.au"
-    limit: int = 100
+    limit: int = Field(
+        default=_default(100, _LIMITS.max_query_limit), ge=1, le=_LIMITS.max_query_limit
+    )
 
 
 @router.get("/resources/{resource_id}/preview")
 async def preview(
     resource_id: str,
     portal: str = "data.gov.au",
-    limit: int = Query(20, ge=1, le=20),
+    limit: int = Query(_default(20, _LIMITS.max_preview_limit), ge=1, le=_LIMITS.max_preview_limit),
 ) -> dict[str, Any]:
     result = await get_services().query.preview_resource(resource_id, portal, limit)
     return result.model_dump()

@@ -50,7 +50,11 @@ strict = true
 files = ["src/au_opendata_mcp/services", "src/au_opendata_mcp/ckan"]
 
 [tool.coverage.run]
-source = ["src/au_opendata_mcp/services"]
+# safety.py is the security module (SSRF address checks, the SQL validator). It was
+# outside the gate while everything it protects was inside it.
+# Dotted module names, not paths: coverage resolves a directory or an importable
+# module, and a bare "<path>/safety.py" is neither (it warns and measures nothing).
+source = ["au_opendata_mcp.services", "au_opendata_mcp.safety"]
 branch = true
 
 [tool.coverage.report]
