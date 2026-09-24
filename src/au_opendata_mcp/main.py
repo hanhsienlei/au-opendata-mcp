@@ -10,7 +10,7 @@ from au_opendata_mcp.api import STATUS_FOR, router, tools_router
 from au_opendata_mcp.deps import close_services
 from au_opendata_mcp.errors import AuOpenDataError
 from au_opendata_mcp.mcp_server import mcp
-from au_opendata_mcp.observability import configure_logging
+from au_opendata_mcp.observability import RequestLoggingMiddleware, configure_logging
 
 log = logging.getLogger(__name__)
 
@@ -56,6 +56,10 @@ def create_app() -> FastAPI:
     async def bad_argument(_: Request, exc: ValueError) -> JSONResponse:
         return JSONResponse(status_code=400, content={"detail": str(exc)})
 
+    # Added inside create_app() so TestClient exercises it too -- this is the only
+    # request log the server emits (uvicorn's own access log is disabled in cli()).
+    app.add_middleware(RequestLoggingMiddleware)
+
     app.include_router(router)
     app.include_router(tools_router)
     app.mount("/mcp", mcp_app)
@@ -90,7 +94,12 @@ def cli() -> None:
     else:
         import uvicorn
 
-        uvicorn.run(create_app(), host=args.host, port=args.port)
+        # access_log=False, not a log_config tweak: uvicorn.access is created with
+        # propagate=False and its own handler, so configure_logging cannot reach it, and
+        # what it writes is the raw request line -- query string and path parameters
+        # included. RequestLoggingMiddleware (installed in create_app) replaces it with a
+        # record that names the route template instead.
+        uvicorn.run(create_app(), host=args.host, port=args.port, access_log=False)
 
 
 if __name__ == "__main__":

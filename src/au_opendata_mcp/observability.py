@@ -62,8 +62,11 @@ class JsonFormatter(logging.Formatter):
 # a chatty client library must not undo that by logging the raw request itself.
 # httpcore is quieted defensively even though it does not currently log at INFO on
 # the request path (it favours its own trace-extension mechanism); urllib3 is not
-# a dependency of this project.
-_NOISY_THIRD_PARTY_LOGGERS = ("httpx", "httpcore")
+# a dependency of this project. "httpx2" is a *separate* distribution from "httpx"
+# with its own logger name, pulled in transitively by fastmcp/mcp (and preferred by
+# starlette.testclient) -- silencing "httpx" does nothing for it, and it logs the
+# same "HTTP Request: GET <full url>" line at INFO.
+_NOISY_THIRD_PARTY_LOGGERS = ("httpx", "httpx2", "httpcore")
 
 
 def configure_logging(level: str = "INFO") -> None:
@@ -85,6 +88,67 @@ def arguments_digest(arguments: Mapping[str, Any] | None) -> str:
     """
     canonical = json.dumps(arguments or {}, sort_keys=True, default=str)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:12]
+
+
+UNROUTED = "<unrouted>"
+
+
+class RequestLoggingMiddleware:
+    """Log one structured record per HTTP request: method, route template, status, duration.
+
+    This replaces uvicorn's own access log, which is disabled in `main.cli()`. It has to
+    be replaced rather than reconfigured: `uvicorn.access` is created with
+    ``propagate: False`` and its own handler, so `configure_logging` cannot reach it, and
+    what it writes is the raw request line -- ``GET /api/datasets?q=<the user's
+    question>`` -- which is exactly the content `arguments_digest` exists to keep out of
+    the logs.
+
+    Two deliberate choices:
+
+    * **The route template, never the concrete path.** ``/api/tools/abn/51824753556`` and
+      ``/api/datasets/{dataset_id}`` both carry caller-supplied values *in the path*, so
+      stripping the query string alone would not be enough. `scope["route"]` is set by
+      Starlette's router while the request is handled; a request that matched no route
+      (a 404, or a malformed path) leaves it unset, and is reported as `UNROUTED` rather
+      than raising here. The query string is never read at all.
+
+    * **Raw ASGI, not `BaseHTTPMiddleware`.** The app mounts FastMCP's streaming HTTP
+      transport at ``/mcp``; `BaseHTTPMiddleware` buffers through an anyio stream and is
+      a known source of trouble for long-lived streaming responses. A bare ASGI wrapper
+      touches nothing but the response-start message.
+    """
+
+    def __init__(self, app: Any) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        if scope.get("type") != "http":
+            await self.app(scope, receive, send)
+            return
+
+        status = 500  # what the caller sees if the app dies before sending a response
+        started = time.perf_counter()
+
+        async def send_wrapper(message: Any) -> None:
+            nonlocal status
+            if message.get("type") == "http.response.start":
+                status = message["status"]
+            await send(message)
+
+        try:
+            await self.app(scope, receive, send_wrapper)
+        finally:
+            route = scope.get("route")
+            log.info(
+                "request",
+                extra={
+                    "event": "request",
+                    "method": scope.get("method", "?"),
+                    "route": getattr(route, "path", UNROUTED),
+                    "status": status,
+                    "duration_ms": round((time.perf_counter() - started) * 1000, 1),
+                },
+            )
 
 
 class ToolTimingMiddleware(Middleware):
