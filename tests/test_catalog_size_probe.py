@@ -214,3 +214,38 @@ async def test_the_probe_never_follows_a_redirect_to_an_unvalidated_address():
     assert redirected_to.call_count == 0
     assert resource.queryable == "unknown"
     assert resource.size_bytes is None
+
+
+@respx.mock
+async def test_head_redirect_with_content_length_does_not_confuse_size():
+    """data.gov.au resources commonly 302 to S3 or Azure blob storage. The redirect
+    response carries its own Content-Length for the redirect body, not the actual resource.
+    This regresses if we read content-length without checking the status code first."""
+    respx.get(url__startswith="https://data.gov.au/data/api/3/action/package_show").mock(
+        return_value=httpx.Response(200, json=dataset_with_sizeless_csv())
+    )
+    respx.head("https://x.org/stops.csv").mock(
+        return_value=httpx.Response(302, headers={"content-length": "138"})
+    )
+    resource = (await build_service().get_dataset("d")).resources[0]
+
+    assert resource.queryable == "unknown", "redirect should not reveal queryability"
+    assert resource.size_bytes is None, "redirect content-length should not be used as size"
+    assert "could not be probed" in resource.queryable_reason
+
+
+@respx.mock
+async def test_head_error_with_content_length_does_not_confuse_size():
+    """Error responses (4xx, 5xx) like 405 Method Not Allowed also carry their own
+    Content-Length for the error page, not the actual resource. Same issue as redirects."""
+    respx.get(url__startswith="https://data.gov.au/data/api/3/action/package_show").mock(
+        return_value=httpx.Response(200, json=dataset_with_sizeless_csv())
+    )
+    respx.head("https://x.org/stops.csv").mock(
+        return_value=httpx.Response(405, headers={"content-length": "512"})
+    )
+    resource = (await build_service().get_dataset("d")).resources[0]
+
+    assert resource.queryable == "unknown", "error should not reveal queryability"
+    assert resource.size_bytes is None, "error content-length should not be used as size"
+    assert "could not be probed" in resource.queryable_reason

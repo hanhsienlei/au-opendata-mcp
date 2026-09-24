@@ -160,11 +160,18 @@ class CatalogService:
                 resource.url,
                 timeout=self.settings.head_timeout_seconds,
             )
-            length = resp.headers.get("content-length")
         except httpx.HTTPError:
             resource.queryable_reason = "size could not be probed; enforced during download instead"
             return
 
+        # Redirects (3xx) and errors (>=400) carry their own Content-Length for the
+        # redirect/error body, not the actual resource. Treat as unresolvable and do
+        # not follow the redirect (an invariant Materialiser.__init__ protects).
+        if resp.is_redirect or resp.status_code >= 400:
+            resource.queryable_reason = "size could not be probed; enforced during download instead"
+            return
+
+        length = resp.headers.get("content-length")
         if not length or not length.isdigit():
             resource.queryable_reason = (
                 "size not declared and not reported by the server; enforced during download instead"
