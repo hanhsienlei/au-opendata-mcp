@@ -47,7 +47,8 @@ def build(tmp_path) -> QueryService:
     clients = {
         p: CkanClient(get_portal(p), http, SETTINGS) for p in ("data.gov.au", "data.sa.gov.au")
     }
-    catalog = CatalogService(clients, SETTINGS)
+    catalog = CatalogService(clients, SETTINGS, http)
+    catalog._resolve = lambda host: ["93.184.216.34"]
     blobs = BlobCache(
         tmp_path / "blobs", SETTINGS.materialisation_ttl_seconds, SETTINGS.cache_max_bytes
     )

@@ -32,7 +32,7 @@ def get_services() -> Services:
         ttl_seconds=settings.metadata_ttl_seconds,
     )
     clients = {p.id: CkanClient(p, http, settings, cache=metadata_cache) for p in all_portals()}
-    catalog = CatalogService(clients, settings)
+    catalog = CatalogService(clients, settings, http)
     blobs = BlobCache(
         settings.cache_dir / "blobs",
         settings.materialisation_ttl_seconds,

@@ -26,7 +26,10 @@ def build_service() -> CatalogService:
     clients = {
         p: CkanClient(get_portal(p), http, SETTINGS) for p in ("data.gov.au", "data.sa.gov.au")
     }
-    return CatalogService(clients, SETTINGS)
+    service = CatalogService(clients, SETTINGS, http)
+    # Public IPs only in tests; the SSRF resolver itself is exercised in test_safety_urls.py.
+    service._resolve = lambda host: ["93.184.216.34"]
+    return service
 
 
 def package_search_payload(*datasets: dict) -> dict:
@@ -420,3 +423,78 @@ async def test_list_portals_degrades_to_none_when_a_portal_is_down():
     counts = {p.id: p.dataset_count for p in await build_service().list_portals()}
     assert counts["data.gov.au"] is None
     assert counts["data.sa.gov.au"] == 1200
+
+
+# --- fix (C2): the fan-out failure log must never carry the caller's search text.
+# ckan/client.py used to interpolate the whole `params` dict (which holds the raw `q`) and
+# CKAN's own error text (into which Solr echoes the submitted query) into the exception
+# message, and this log line then wrote the exception out verbatim. The fix is belt and
+# braces: the client no longer builds such a message, and this log line now records the
+# exception *type* rather than the exception, so a future message change cannot re-open it.
+
+QUERY_MARKER = "CONFIDENTIAL-TAX-EVASION-QUESTION"
+
+
+def rendered(caplog) -> str:
+    from au_opendata_mcp.observability import JsonFormatter
+
+    formatter = JsonFormatter()
+    return "\n".join(formatter.format(r) for r in caplog.records)
+
+
+@respx.mock
+async def test_a_404_fan_out_failure_is_logged_without_the_callers_query(caplog):
+    respx.get(url__startswith="https://data.gov.au/data/api/3/action/package_search").mock(
+        return_value=httpx.Response(404, json={"success": False})
+    )
+    respx.get(url__startswith="https://data.sa.gov.au/data/api/3/action/package_search").mock(
+        return_value=httpx.Response(200, json=package_search_payload(DATASET))
+    )
+    with caplog.at_level(logging.WARNING):
+        results = await build_service().search_datasets(QUERY_MARKER, portal="all")
+    assert {r.portal for r in results} == {"data.sa.gov.au"}
+    out = rendered(caplog)
+    assert QUERY_MARKER not in out
+    assert "data.gov.au" in out  # the portal id is fine to log; caller content is not
+
+
+@respx.mock
+async def test_a_ckan_failure_body_fan_out_is_logged_without_the_callers_query(caplog):
+    respx.get(url__startswith="https://data.gov.au/data/api/3/action/package_search").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "success": False,
+                "error": {"message": f"undefined field for query {QUERY_MARKER}"},
+            },
+        )
+    )
+    respx.get(url__startswith="https://data.sa.gov.au/data/api/3/action/package_search").mock(
+        return_value=httpx.Response(200, json=package_search_payload(DATASET))
+    )
+    with caplog.at_level(logging.WARNING):
+        results = await build_service().search_datasets(QUERY_MARKER, portal="all")
+    assert {r.portal for r in results} == {"data.sa.gov.au"}
+    out = rendered(caplog)
+    assert QUERY_MARKER not in out
+    assert "data.gov.au" in out
+
+
+async def test_the_fan_out_log_records_the_exception_type_not_the_exception(caplog):
+    """Pins the belt-and-braces half of the C2 fix independently of ckan/client.py: even if
+    some future upstream error message did carry caller content, this log line would not
+    write it out, because it never formats the exception itself."""
+    service = build_service()
+
+    async def explode(name, params):
+        raise UpstreamUnavailable(f"portal said: no such field {QUERY_MARKER}")
+
+    for client in service.clients.values():
+        client.action = explode  # type: ignore[method-assign]
+
+    with caplog.at_level(logging.WARNING), pytest.raises(UpstreamUnavailable):
+        await service.search_datasets(QUERY_MARKER, portal="all")
+    out = rendered(caplog)
+    assert QUERY_MARKER not in out
+    assert "UpstreamUnavailable" in out
+    assert "data.gov.au" in out

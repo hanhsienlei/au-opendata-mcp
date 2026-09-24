@@ -9,9 +9,10 @@ from pydantic import BaseModel
 from au_opendata_mcp.ckan.client import CkanClient
 from au_opendata_mcp.ckan.models import CkanDataset, CkanResource
 from au_opendata_mcp.config import Settings
-from au_opendata_mcp.errors import UpstreamUnavailable
+from au_opendata_mcp.errors import AuOpenDataError, UpstreamUnavailable
 from au_opendata_mcp.models import Sourced
 from au_opendata_mcp.portals import Portal, all_portals, get_portal
+from au_opendata_mcp.safety import _resolve_host, assert_safe_url
 
 log = logging.getLogger(__name__)
 
@@ -105,24 +106,59 @@ def _dataset_url(portal: Portal, ds: CkanDataset) -> str:
 
 
 class CatalogService:
-    def __init__(self, clients: Mapping[str, CkanClient], settings: Settings) -> None:
+    def __init__(
+        self,
+        clients: Mapping[str, CkanClient],
+        settings: Settings,
+        http: httpx.AsyncClient,
+    ) -> None:
         self.clients = clients
         self.settings = settings
+        # The HEAD probe is an outbound fetch of a *portal-supplied* URL, not a CKAN API
+        # call, so it gets the shared client directly rather than reaching into an
+        # arbitrary CkanClient's `.http` and borrowing its transport.
+        self.http = http
+        # Injectable for the same reason Materialiser's is: so tests exercise the guard
+        # without a real DNS lookup. See tests/test_safety_urls.py for the resolver itself.
+        self._resolve: Callable[[str], list[str]] = _resolve_host
 
     def _client(self, portal_id: str) -> CkanClient:
         get_portal(portal_id)
         return self.clients[portal_id]
 
     async def _probe_size(self, resource: ResourceInfo) -> None:
-        """Resolve one undeclared size via HEAD, under a dedicated short budget."""
+        """Resolve one undeclared size via HEAD, under a dedicated short budget.
+
+        The URL comes from portal metadata, but "the portal named it" is not the same as
+        "it is safe to fetch": a resource whose url is ``http://169.254.169.254/...``
+        would otherwise be HEADed by the server, from inside the server's own network.
+        So this goes through the same `assert_safe_url` guard as an actual download, and
+        a refusal is recorded as the resource's `queryable_reason` rather than failing the
+        whole `get_dataset` call over one bad resource among many.
+
+        Redirects are deliberately not followed. The shared client is built with
+        ``follow_redirects=False`` -- an invariant `Materialiser.__init__` raises to
+        protect, because following redirects internally means the post-redirect address is
+        never re-validated. Passing ``follow_redirects=True`` here would have violated that
+        invariant on the very same client object. An unchecked redirect target is exactly
+        the address this guard exists to refuse, so an unresolved size is the right answer.
+
+        `assert_safe_url` resolves DNS with a blocking `socket.getaddrinfo`, so it is
+        offloaded: `_probe_sizes` runs these concurrently, and a blocking resolve would
+        serialise them and stall the loop besides.
+        """
         if resource.queryable != "unknown" or not resource.url:
             return
-        client = next(iter(self.clients.values())).http
         try:
-            resp = await client.head(
+            await asyncio.to_thread(assert_safe_url, resource.url, resolve=self._resolve)
+        except AuOpenDataError as exc:
+            resource.queryable = "no"
+            resource.queryable_reason = f"refused to probe this URL: {exc.message}"
+            return
+        try:
+            resp = await self.http.head(
                 resource.url,
                 timeout=self.settings.head_timeout_seconds,
-                follow_redirects=True,
             )
             length = resp.headers.get("content-length")
         except httpx.HTTPError:
@@ -157,7 +193,7 @@ class CatalogService:
         """Run `make_call` concurrently against every portal and merge the successes.
 
         A per-portal failure is logged at WARNING (naming the portal and the
-        exception) and otherwise silently excluded from the merge — that is the
+        exception type) and otherwise silently excluded from the merge — that is the
         intended "partial degradation" behaviour. But if *every* portal failed,
         returning an empty list would be indistinguishable from "no results",
         and the consumer here is a language model that reports the answer to a
@@ -170,7 +206,11 @@ class CatalogService:
         failed: list[str] = []
         for p, item in zip(portals, results, strict=True):
             if isinstance(item, BaseException):
-                log.warning("%s failed for portal %s: %s", op, p.id, item)
+                # The *type*, never the exception: a portal's error text (and anything
+                # this codebase interpolates into an exception message) can carry the
+                # caller's own search string, and this line is the last thing between
+                # that and the log file.
+                log.warning("%s failed for portal %s: %s", op, p.id, type(item).__name__)
                 failed.append(p.id)
             else:
                 merged.extend(item)

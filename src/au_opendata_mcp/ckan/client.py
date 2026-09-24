@@ -59,7 +59,10 @@ class CkanClient:
                 return cached
 
         url = f"{self.portal.api_base}/{name}"
-        last_exc: Exception | None = None
+        # A short, fixed classification of why the last attempt failed -- deliberately not
+        # the exception object. httpx errors can stringify with the failing URL attached,
+        # and that URL carries the caller's own `q` in its query string.
+        last_reason = "no attempt completed"
 
         for attempt in range(self.settings.upstream_retries + 1):
             try:
@@ -67,7 +70,7 @@ class CkanClient:
                     url, params=params, timeout=self.settings.upstream_timeout_seconds
                 )
             except httpx.HTTPError as exc:
-                last_exc = exc
+                last_reason = f"transport error ({type(exc).__name__})"
                 if attempt < self.settings.upstream_retries:
                     await asyncio.sleep(0.2 * (2**attempt))
                     continue
@@ -84,12 +87,16 @@ class CkanClient:
             )
 
             if resp.status_code == 404:
+                # Param *keys* only. The values are caller content -- package_search's `q`
+                # is a user's question -- and this message is logged by the fan-out in
+                # services/catalog.py and returned to the caller by the REST layer.
                 raise ResourceNotFound(
-                    f"{name}({params}) not found on {self.portal.id}",
+                    f"{name}(params: {', '.join(sorted(params)) or 'none'}) "
+                    f"not found on {self.portal.id}",
                     remedy_url=self.portal.site_url,
                 )
             if resp.status_code >= 500:
-                last_exc = UpstreamUnavailable(f"{self.portal.id} returned {resp.status_code}")
+                last_reason = f"HTTP {resp.status_code}"
                 if attempt < self.settings.upstream_retries:
                     await asyncio.sleep(0.2 * (2**attempt))
                     continue
@@ -99,12 +106,43 @@ class CkanClient:
                     f"{self.portal.id} rejected {name}: HTTP {resp.status_code}",
                     remedy_url=self.portal.site_url,
                 )
-
-            body = resp.json()
-            if not body.get("success"):
-                message = (body.get("error") or {}).get("message", "unknown CKAN error")
+            if 300 <= resp.status_code < 400:
+                # The shared client is built with follow_redirects=False, so a redirect
+                # arriving here is an upstream anomaly (a moved API endpoint, a captive
+                # portal), not something to parse as JSON.
                 raise UpstreamUnavailable(
-                    f"{self.portal.id} reported failure for {name}: {message}",
+                    f"{self.portal.id} redirected the {name} API call "
+                    f"(HTTP {resp.status_code}); the portal's API may have moved",
+                    remedy_url=self.portal.site_url,
+                )
+
+            # A 204, or a 200 carrying a WAF block page or a CDN error page, are realistic
+            # government-portal outage modes. Left to a bare resp.json() they raise
+            # ValueError, which the REST layer turns into HTTP 400 -- telling the caller
+            # (often a model, which will then retry with different arguments forever) that
+            # a portal outage was their mistake. Spec 4.2: this is UpstreamUnavailable/502.
+            try:
+                body = resp.json()
+            except ValueError as exc:
+                raise UpstreamUnavailable(
+                    f"{self.portal.id} returned a non-JSON body for {name} "
+                    f"(HTTP {resp.status_code}); the portal is likely down or "
+                    "serving an error page",
+                    remedy_url=self.portal.site_url,
+                ) from exc
+            if not isinstance(body, dict):
+                raise UpstreamUnavailable(
+                    f"{self.portal.id} returned JSON that is not a CKAN response envelope "
+                    f"for {name} (HTTP {resp.status_code})",
+                    remedy_url=self.portal.site_url,
+                )
+            if not body.get("success"):
+                # CKAN's own error text is not interpolated: Solr routinely echoes the
+                # submitted query back inside it, which would put the caller's search
+                # text straight into this message (and from there into the logs).
+                raise UpstreamUnavailable(
+                    f"{self.portal.id} reported failure for {name} "
+                    "(upstream error text suppressed: it can echo caller input)",
                     remedy_url=self.portal.site_url,
                 )
             result = body["result"]
@@ -113,6 +151,6 @@ class CkanClient:
             return result
 
         raise UpstreamUnavailable(
-            f"{self.portal.id} unreachable for {name}: {last_exc}",
+            f"{self.portal.id} unreachable for {name}: {last_reason}",
             remedy_url=self.portal.site_url,
         )
