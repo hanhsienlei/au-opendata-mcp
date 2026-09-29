@@ -178,10 +178,18 @@ needs a portal, so both answer even if data.gov.au is down.
 ## Evaluation
 
 `evals/questions.md` has a 20-question tool-call evaluation harness: for each question, the
-tool sequence a correct response should produce, run manually against Claude Desktop with the
-server configured. It has not been run yet, so no score is claimed here — a number with no
-run behind it is worse than no number. Run it yourself with the Claude Desktop config above,
-then fill in the results table and this section.
+tool sequence a correct response should produce.
+
+**The headline metric — whether a model picks those sequences — has not been run.** It needs
+the server wired into Claude Desktop and a human working through the questions, so no score
+for it is claimed here or anywhere else in this repo; a number with no run behind it is worse
+than no number. Run it with the Claude Desktop config above and fill in the results table.
+
+What *has* been run is a weaker, server-side check: on 2026-09-29, each question's **expected**
+tool sequence was executed directly against the live data.gov.au and data.sa.gov.au APIs, and
+all 20 succeeded and returned correct, sourced answers. That establishes the tools work on real
+data today. It establishes nothing about tool *selection*, which is what the metric above
+measures — the two are deliberately reported apart.
 
 ## Development
 

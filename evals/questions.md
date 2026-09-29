@@ -4,9 +4,23 @@ Target: >= 95% of questions produce the expected tool sequence and a correct, so
 Run manually against Claude Desktop with the server configured (see the README's "Claude
 Desktop" section). Record the date and paste the results into the README.
 
-**Run date:** not yet run
-**Result:** not yet run — this harness has not been executed against Claude Desktop. See the
-README's "Evaluation" section for why no score is claimed here or anywhere else in this repo.
+**Model tool-selection run:** not yet run. This is the metric above — whether a *model*,
+given only the tool descriptions, picks the expected sequence. It needs the server wired into
+Claude Desktop and a human working through the questions. No score is claimed anywhere in this
+repo until that happens.
+
+**Server-side sequence check:** 20/20, run 2026-09-29 against the live data.gov.au and
+data.sa.gov.au APIs. This is a *different and weaker* claim: it executes each question's
+**expected** tool sequence directly against the service layer and checks the call succeeds and
+returns a correct, sourced answer. It proves the tools work on real data today — it proves
+nothing about whether a model would choose them. The two must not be conflated.
+
+Notable from that run, and worth watching when the model run happens: for question 6, CKAN's
+relevance ranking returns `national-public-toilet-map` (CSV + PDF) only **third**, behind two
+ArcGIS REST services. A caller that takes the first hit lands on a dataset with nothing
+queryable. Choosing correctly means reading the `formats` field in the search results — which
+is why `search_datasets` returns it. This is a plausible place for a model to go wrong, so it
+is worth noting which dataset it picks rather than only whether the final answer is right.
 
 | # | Question | Expected tool sequence | Pass? |
 |---|---|---|---|
