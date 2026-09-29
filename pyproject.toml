@@ -1,0 +1,62 @@
+[project]
+name = "au-opendata-mcp"
+version = "0.1.0"
+description = "MCP server for Australian government open data"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi>=0.141",
+    "fastmcp>=4.0",
+    "httpx>=0.28",
+    "duckdb>=1.5",
+    "sqlglot>=30.0",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.15",
+    "uvicorn>=0.34",
+]
+
+[project.scripts]
+au-opendata-mcp = "au_opendata_mcp.main:cli"
+
+[dependency-groups]
+dev = ["pytest>=8.3", "pytest-asyncio>=0.24", "pytest-cov>=6.0", "respx>=0.23", "ruff>=0.8", "mypy>=1.13"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/au_opendata_mcp"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = ["live: hits real upstream APIs; deselected by default"]
+addopts = "-m 'not live'"
+filterwarnings = [
+    "ignore:The anyio.abc.BlockingPortal alias is deprecated:DeprecationWarning:starlette.testclient",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+exclude = ["docs"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src/au_opendata_mcp/services", "src/au_opendata_mcp/ckan"]
+
+[tool.coverage.run]
+# safety.py is the security module (SSRF address checks, the SQL validator). It was
+# outside the gate while everything it protects was inside it.
+# Dotted module names, not paths: coverage resolves a directory or an importable
+# module, and a bare "<path>/safety.py" is neither (it warns and measures nothing).
+source = ["au_opendata_mcp.services", "au_opendata_mcp.safety"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true

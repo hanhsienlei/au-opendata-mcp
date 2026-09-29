@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  # Both, deliberately: this repository's default branch is `master`, while `main` is
+  # GitHub's default for new ones. Listing only one means a post-merge push to the
+  # default branch runs nothing -- and the README presents CI as the proof behind the
+  # 80% coverage gate.
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install the pinned toolchain
+        run: uv python install 3.12
+
+      - name: Sync dependencies
+        run: uv sync --frozen
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Check formatting
+        run: uv run ruff format --check .
+
+      - name: Typecheck
+        run: uv run mypy
+
+      - name: Test with the coverage gate
+        run: uv run pytest --cov --cov-fail-under=80
