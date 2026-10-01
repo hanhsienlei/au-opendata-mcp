@@ -19,7 +19,7 @@ Build a self-hostable MCP server that wraps Australian government open data (dat
 2. Safe tabular queries: SELECT only, with row and file-size limits.
 3. Deterministic Australian utility tools (ABN/ACN validation, financial-year conversion and more).
 4. Every result carries its source link and licence, meeting CC BY attribution.
-5. Clean structure and solid tests, fit to show in a portfolio.
+5. Clean structure and solid tests.
 
 **Non-goals (not in v1)**
 

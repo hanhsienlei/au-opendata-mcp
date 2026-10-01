@@ -106,7 +106,7 @@ async def test_resources_already_decided_are_not_probed_at_all():
 @respx.mock
 async def test_size_minus_one_is_probed_and_resolved():
     """data.gov.au uses size: -1 as its unknown size sentinel.
-    Task 3 normalises it to "unknown", so the probe should resolve it."""
+    assess_queryable normalises it to "unknown", so the probe should resolve it."""
     payload = dataset_with_sizeless_csv()
     payload["result"]["resources"][0]["size"] = -1
     respx.get(url__startswith="https://data.gov.au/data/api/3/action/package_show").mock(
@@ -141,7 +141,7 @@ async def test_head_uses_the_dedicated_5_second_timeout():
     assert timeout["pool"] == SETTINGS.head_timeout_seconds
 
 
-# --- fix (I1): the HEAD probe fetched any portal-named address, including link-local,
+# --- The HEAD probe used to fetch any portal-named address, including link-local,
 # with redirects on. Proven before the fix: a resource whose url was
 # http://169.254.169.254/latest/meta-data/ was HEADed and reported queryable: "yes".
 # Worse, follow_redirects=True was passed on the *same shared client* whose

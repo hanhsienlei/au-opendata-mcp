@@ -100,9 +100,9 @@ def test_missing_format_is_not_queryable():
     assert assess_queryable(r, SETTINGS)[0] == "no"
 
 
-# --- correction 1: data.gov.au's "unknown size" sentinel is -1, not None ---
+# --- data.gov.au's "unknown size" sentinel is -1, not None ---
 # 6 of 29 resources in the recorded package_search fixture carry size=-1. Any
-# non-positive size must normalise to "unknown" so Task 4's HEAD probe fires.
+# non-positive size must normalise to "unknown" so the HEAD size probe fires.
 
 
 def test_sentinel_size_negative_one_is_unknown_not_silently_queryable():
@@ -425,7 +425,7 @@ async def test_list_portals_degrades_to_none_when_a_portal_is_down():
     assert counts["data.sa.gov.au"] == 1200
 
 
-# --- fix (C2): the fan-out failure log must never carry the caller's search text.
+# --- The fan-out failure log must never carry the caller's search text.
 # ckan/client.py used to interpolate the whole `params` dict (which holds the raw `q`) and
 # CKAN's own error text (into which Solr echoes the submitted query) into the exception
 # message, and this log line then wrote the exception out verbatim. The fix is belt and

@@ -1,8 +1,8 @@
 """Guards for claims the repository makes about itself outside the Python source.
 
-These are cheap, and each one covers a finding where the code was right and the surrounding
+These are cheap, and each one covers a case where the code was right and the surrounding
 promise was not -- a CI trigger that never fired on the default branch, a coverage gate that
-excluded the security module, and a spec-required README section that did not exist.
+excluded the security module, and a design-required README section that did not exist.
 """
 
 import pathlib
@@ -15,7 +15,7 @@ README = ROOT / "README.md"
 PYPROJECT = ROOT / "pyproject.toml"
 
 
-# --- fix (I4): CI triggered on push to `main` only, and this repository's default branch
+# --- CI once triggered on push to `main` only, and this repository's default branch
 # is `master` -- so a post-merge push ran nothing, while README.md presents CI as the proof
 # behind "80% coverage -- a gate, not a claim".
 
@@ -31,7 +31,7 @@ def test_ci_still_runs_the_coverage_gate():
     assert "--cov-fail-under=80" in CI.read_text()
 
 
-# --- promoted ledger item: the coverage gate covered services/ only, leaving safety.py --
+# --- The coverage gate once covered services/ only, leaving safety.py --
 # the SSRF address check and the SQL validator -- outside the one gate the README cites.
 
 
@@ -42,7 +42,7 @@ def test_the_coverage_gate_includes_the_security_module():
     assert "au_opendata_mcp.safety" in sources
 
 
-# --- fix (I5): spec section 10 requires three demo scenarios written into the README with
+# --- docs/design.md §10 requires three demo scenarios written into the README with
 # exact prompts: catalog search, an aggregate query over a real resource, ABN validation.
 
 

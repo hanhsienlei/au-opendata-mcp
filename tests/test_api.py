@@ -68,7 +68,7 @@ def test_unknown_portal_is_a_400_with_the_valid_options():
     assert "data.gov.au" in r.json()["detail"]
 
 
-# --- fix (I2): a portal outage must surface as 502 (spec 4.2), not 400.
+# --- A portal outage must surface as 502 (docs/design.md §4.2), not 400.
 # Before the fix, a bare resp.json() in ckan/client.py raised ValueError on all three of
 # these and main.py's ValueError handler returned
 # HTTP 400 {"detail":"Expecting value: line 1 column 1 (char 0)"} -- blaming the caller for
@@ -102,7 +102,7 @@ def test_a_portal_outage_is_a_502_not_a_400(label, response):
     assert "data.gov.au" in r.json()["detail"]
 
 
-# --- promoted ledger item: REST hardcoded its own limit ceilings (and left
+# --- REST used to hardcode its own limit ceilings (and leave
 # QueryRequest.limit unbounded) while the service clamped against Settings, so the two
 # adapters disagreed about who owns the limit. The REST bounds are now derived from Settings.
 

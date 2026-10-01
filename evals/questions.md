@@ -48,7 +48,7 @@ is worth noting which dataset it picks rather than only whether the final answer
 ## Notes on failures
 
 Record, for each failure, which tool the model reached for and what the description should
-have said to prevent it. Tool descriptions are the prompt (spec section 5.3); a systematic
+have said to prevent it. Tool descriptions are the prompt (docs/design.md §5.3); a systematic
 failure here is a description bug, not a model bug.
 
 _Not yet run — no failures recorded._

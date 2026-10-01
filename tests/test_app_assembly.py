@@ -45,7 +45,7 @@ async def test_every_tool_carries_a_description():
 
 
 def test_omitting_the_fastmcp_lifespan_silently_breaks_only_mcp():
-    """Regression guard for spec section 4.4. REST keeps working, which is the trap."""
+    """Regression guard for docs/design.md §4.4. REST keeps working, which is the trap."""
     mcp_app = mcp.http_app(path="/")
     broken = FastAPI()  # deliberately no lifespan=mcp_app.lifespan
 

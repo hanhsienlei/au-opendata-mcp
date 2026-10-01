@@ -82,7 +82,7 @@ def execute_in_sandbox(
 ) -> tuple[list[ColumnInfo], list[dict[str, Any]], bool]:
     """Run caller SQL against a locked-down in-memory DuckDB.
 
-    THE ORDER OF THE FIRST THREE STATEMENTS IS THE SECURITY CONTROL (spec section 6.2).
+    THE ORDER OF THE FIRST THREE STATEMENTS IS THE SECURITY CONTROL (docs/design.md §6.2).
     The table must be materialised BEFORE external access is revoked, because revoking it
     also disables read_parquet. Locking first and loading second fails outright; loading
     first and never locking leaves the filesystem open to caller SQL.
@@ -170,7 +170,7 @@ async def run_sandboxed_query(
     `con.interrupt()` if it overruns.
 
     Every caller that runs SQL against the sandbox -- `query_resource` here, and
-    `preview_resource` (Task 11) -- must call this, not `execute_in_sandbox` directly, so
+    `preview_resource` -- must call this, not `execute_in_sandbox` directly, so
     both get the same event-loop protection and time budget.
     """
     return await asyncio.to_thread(

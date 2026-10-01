@@ -244,7 +244,7 @@ async def test_a_stalled_download_is_stopped_by_the_resource_budget(tmp_path):
         await build(tmp_path, settings).parquet_for(resource(), {URL})
 
 
-# --- fix (I3): _convert must not run on the event loop.
+# --- _convert must not run on the event loop.
 # _convert calls DuckDB (blocking) and _pick_csv_encoding reads and decodes the whole file
 # in memory first. Measured before the fix: a 90 MB CSV blocked the loop for 1.09 s and the
 # loop got exactly one tick. It also meant the 60 s resource budget in parquet_for could

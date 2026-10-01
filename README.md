@@ -211,4 +211,4 @@ User accounts, API key issuance, and quotas; a web frontend or dashboard; a full
 or daily crawl; the ABS SDMX statistics API; the NSW, VIC and QLD portals; and actual cloud
 deployment (a `Dockerfile` exists and has been built and run locally, but nothing has been
 deployed to Cloud Run or any other host). See `docs/prd.md` and
-`docs/superpowers/specs/2026-09-23-au-opendata-mcp-design.md` for the reasoning behind each.
+`docs/design.md` for the reasoning behind each.

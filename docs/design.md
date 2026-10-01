@@ -1,7 +1,7 @@
 # Design — au-opendata-mcp
 
 Date: 2026-09-23
-Status: Approved for implementation planning
+Status: Implemented (v1)
 Supersedes the open questions in `docs/prd.md`
 
 ## 1. Purpose and framing
@@ -9,8 +9,8 @@ Supersedes the open questions in `docs/prd.md`
 `au-opendata-mcp` is a self-hostable MCP server that exposes Australian government
 open data (data.gov.au and data.sa.gov.au) as tools an AI client can call directly.
 
-This is a **portfolio-first** project. It must be genuinely correct and genuinely
-useful, but where breadth competes with legibility, legibility wins. Every feature
+It must be genuinely correct and genuinely useful, but where breadth competes with
+legibility, legibility wins. Every feature
 in this design earns its place by being either demonstrable in under a minute or
 defensible in a code review. Anything that is neither has been cut.
 
@@ -419,11 +419,3 @@ Implementation is test-first throughout: red, green, refactor, per behaviour.
 | Licence variation | Licence returned structurally on every result; README states user responsibility |
 | DataStore and DuckDB type divergence | Labelled via the `source` field rather than hidden (§6.5) |
 | FastMCP lifespan regression | Integration test in §9.4 |
-
-## 12. Milestones
-
-| Week | Deliverable |
-| --- | --- |
-| 1 | Skeleton, config, portal registry, CKAN client with fixtures, the four catalog tools, the REST adapter over them, both transports working against Claude Desktop, and the §9.4 integration test |
-| 2 | Materialisation, caching, SSRF guard, SQL validation, `preview_resource` and `query_resource`, security test tables |
-| 3 | The two AU tools, Dockerfile, CI, README, `evals/questions.md` and a recorded run |

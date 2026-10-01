@@ -69,12 +69,12 @@ def _mb(n: int) -> str:
 
 def assess_queryable(resource: CkanResource, settings: Settings) -> tuple[Queryable, str | None]:
     """Decide up front whether query_resource can work, so the caller need not discover it
-    by consuming an error (spec section 5.1).
+    by consuming an error (docs/design.md §5.1).
 
     data.gov.au uses ``size: -1`` as its "unknown size" sentinel, and CKAN's absent-size
     case is ``None``. Both, along with a reported ``0``, mean the same thing: the portal
     has not told us how big the resource is. Any non-positive size is normalised to
-    "unknown" so Task 4's HEAD probe (which only fires on "unknown") gets a chance to
+    "unknown" so the HEAD size probe (which only fires on "unknown") gets a chance to
     resolve the real size instead of the resource being wrongly advertised as queryable.
     """
     fmt = (resource.format or "").strip().upper()

@@ -191,7 +191,7 @@ async def test_read_parquet_row_count_reads_the_file_footer(parquet):
 
 
 async def test_read_parquet_row_count_runs_off_the_event_loop(parquet, monkeypatch):
-    """Pins the asyncio.to_thread hop in read_parquet_row_count (Task 11 fix): without it,
+    """Pins the asyncio.to_thread hop in read_parquet_row_count: without it,
     this test would hang for the full duration of the stand-in slow read instead of the
     ticker advancing concurrently, the same way test_the_event_loop_stays_responsive_...
     pins it for run_sandboxed_query."""

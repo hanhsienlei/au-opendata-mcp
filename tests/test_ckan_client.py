@@ -86,7 +86,7 @@ def test_stripping_tolerates_records_without_full_text():
     assert strip_internal_columns([{"_id": 1, "a": 2}]) == [{"_id": 1, "a": 2}]
 
 
-# --- fix (C2): a CKAN error message must never carry the caller's own text.
+# --- A CKAN error message must never carry the caller's own text.
 # `params` for package_search holds the user's raw `q`, and CKAN/Solr routinely echoes the
 # submitted query back inside its own error text. Both were being interpolated into the
 # exception message, which services/catalog.py then logged verbatim.
@@ -140,7 +140,7 @@ async def test_a_transport_failure_reports_its_type_not_the_requested_url(client
     assert "ConnectError" in message
 
 
-# --- fix (I2): a portal outage must not be reported as the caller's mistake.
+# --- A portal outage must not be reported as the caller's mistake.
 # A bare resp.json() on a 3xx, a 204, or a 200 carrying a WAF/CDN error page raised
 # ValueError, which main.py's handler turned into HTTP 400 with the text
 # "Expecting value: line 1 column 1 (char 0)".
