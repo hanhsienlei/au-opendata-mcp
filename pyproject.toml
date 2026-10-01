@@ -3,6 +3,8 @@ name = "au-opendata-mcp"
 version = "0.1.0"
 description = "MCP server for Australian government open data"
 requires-python = ">=3.12,<3.13"
+license = "MIT"
+license-files = ["LICENSE"]
 dependencies = [
     "fastapi>=0.141",
     "fastmcp>=4.0",
