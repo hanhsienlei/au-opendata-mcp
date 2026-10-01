@@ -317,12 +317,12 @@ class CatalogService:
         )
 
     async def list_organizations(
-        self, portal: str = "data.gov.au", q: str | None = None
+        self, portal: str = "data.gov.au", q: str | None = None, limit: int = 20
     ) -> list[OrganizationSummary]:
         if portal == "all":
             return await self._fan_out_all_portals(
                 "list_organizations",
-                lambda p: self.list_organizations(p.id, q),
+                lambda p: self.list_organizations(p.id, q, limit),
             )
 
         # Not organization_list: CKAN caps it at 25 rows whenever all_fields is set, which
@@ -348,4 +348,4 @@ class CatalogService:
                 )
             )
         orgs.sort(key=lambda o: o.dataset_count or 0, reverse=True)
-        return orgs
+        return orgs[: max(1, min(limit, self.settings.max_org_limit))]

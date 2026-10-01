@@ -21,6 +21,7 @@ class Settings(BaseSettings):
 
     duckdb_memory_limit: str = "1GB"
     max_search_limit: int = 50
+    max_org_limit: int = 100
     max_preview_limit: int = 20
     max_query_limit: int = 100
     upstream_retries: int = 2

@@ -120,6 +120,8 @@ def test_the_rest_limit_bounds_are_the_ones_settings_declares():
     assert query_param("/api/datasets", "get", "limit")["maximum"] == settings.max_search_limit
     preview = query_param("/api/resources/{resource_id}/preview", "get", "limit")
     assert preview["maximum"] == settings.max_preview_limit
+    orgs = query_param("/api/organizations", "get", "limit")
+    assert orgs["maximum"] == settings.max_org_limit
 
     body = schema["components"]["schemas"]["QueryRequest"]["properties"]["limit"]
     assert body["maximum"] == settings.max_query_limit, "the POST body limit was unbounded"

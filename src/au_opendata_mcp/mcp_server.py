@@ -92,17 +92,19 @@ async def get_dataset(dataset_id: str, portal: str = "data.gov.au") -> dict[str,
 
 @mcp.tool
 async def list_organizations(
-    portal: str = "data.gov.au", q: str | None = None
+    portal: str = "data.gov.au", q: str | None = None, limit: int = 20
 ) -> list[dict[str, Any]]:
-    """List every publisher on a portal with how many datasets each has, largest first.
+    """List a portal's publishers with how many datasets each has, largest first.
 
-    Only publishers with at least one public dataset are listed.
+    Only publishers with at least one public dataset are counted. The first result is the
+    portal's largest publisher; use q to find a specific one beyond the limit.
 
     Args:
         portal: The portal to list publishers for.
-        q: Optional case-insensitive substring filter, e.g. "bureau"."""
+        q: Optional case-insensitive substring filter, e.g. "bureau".
+        limit: Maximum publishers to return, capped at 100."""
     try:
-        orgs = await get_services().catalog.list_organizations(portal=portal, q=q)
+        orgs = await get_services().catalog.list_organizations(portal=portal, q=q, limit=limit)
         return [o.model_dump() for o in orgs]
     except ValueError as exc:
         raise ToolError(str(exc)) from exc

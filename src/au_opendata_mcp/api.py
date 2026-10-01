@@ -69,8 +69,12 @@ async def dataset(dataset_id: str, portal: str = "data.gov.au") -> dict[str, Any
 
 
 @router.get("/organizations")
-async def organizations(portal: str = "data.gov.au", q: str | None = None) -> list[dict[str, Any]]:
-    orgs = await get_services().catalog.list_organizations(portal=portal, q=q)
+async def organizations(
+    portal: str = "data.gov.au",
+    q: str | None = None,
+    limit: int = Query(_default(20, _LIMITS.max_org_limit), ge=1, le=_LIMITS.max_org_limit),
+) -> list[dict[str, Any]]:
+    orgs = await get_services().catalog.list_organizations(portal=portal, q=q, limit=limit)
     return [o.model_dump() for o in orgs]
 
 

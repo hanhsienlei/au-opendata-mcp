@@ -332,7 +332,7 @@ async def test_list_organizations_returns_every_publisher_largest_first():
     orgs_in = [(f"org-{i:02d}", f"Org {i}", (i * 37) % 101 + 1) for i in range(30)]
     route = mock_org_facet("data.gov.au", *orgs_in)
 
-    orgs = await build_service().list_organizations()
+    orgs = await build_service().list_organizations(limit=100)
 
     assert len(orgs) == 30
     counts = [o.dataset_count for o in orgs]
@@ -341,6 +341,21 @@ async def test_list_organizations_returns_every_publisher_largest_first():
     assert params["rows"] == "0"
     assert params["facet.field"] == '["organization"]'
     assert params["facet.limit"] == "-1"
+
+
+@respx.mock
+async def test_list_organizations_limit_keeps_the_largest_and_is_clamped_to_settings():
+    # The full list runs to a thousand-plus entries on data.gov.au, more than an MCP client
+    # will take as one tool result, so the default returns only the top of it.
+    orgs_in = [(f"org-{i:03d}", f"Org {i}", i + 1) for i in range(150)]
+    mock_org_facet("data.gov.au", *orgs_in)
+    service = build_service()
+
+    top = await service.list_organizations(limit=3)
+    assert [o.dataset_count for o in top] == [150, 149, 148]
+    assert len(await service.list_organizations()) == 20
+    assert len(await service.list_organizations(limit=10_000)) == service.settings.max_org_limit
+    assert len(await service.list_organizations(limit=0)) == 1
 
 
 @respx.mock
