@@ -48,7 +48,7 @@ passed (see `main.py`). Restart Claude Desktop after editing the config.
 | Tool | What it does |
 |---|---|
 | `list_portals` | The portals available, with dataset counts |
-| `search_datasets` | Keyword search; one portal or both |
+| `search_datasets` | Keyword search, one portal or both, with each portal's total match count |
 | `get_dataset` | A dataset's metadata and files, each flagged queryable or not |
 | `list_organizations` | The publishers on a portal, largest first, with how many datasets each has |
 | `preview_resource` | A file's columns, types, sample rows and row count |
@@ -197,8 +197,9 @@ runner checks the tool sequence; the answers were graded by hand.
 
 | Run, 2026-10-01 | Claude Sonnet 5.5 | Claude Haiku 4.5 |
 |---|---|---|
-| Before the `list_organizations` fix | 16/20 | 17/20 |
-| **Current code** | **17/20 (85%)** | **18/20 (90%)** |
+| First run | 16/20 | 17/20 |
+| After the `list_organizations` fix | 17/20 | 18/20 |
+| **Current code**, after the `search_datasets` total-count fix | **18/20 (90%)** | **18/20 (90%)** |
 
 The target was 95%, and it is not met. Per-question results and notes are in
 `evals/questions.md`, and each run's tool calls and answers are in `evals/runs/`. In short:
@@ -208,14 +209,17 @@ The target was 95%, and it is not met. Per-question results and notes are in
   Asked who publishes the most datasets, Sonnet said the list looked truncated, and Haiku
   confidently named the wrong publisher. Publishers now come from a search facet, largest
   first, and both models answer Geoscience Australia (42,411 datasets) in one call.
-- **One gap is still open.** `search_datasets` returns at most 50 results and not CKAN's total
-  match count, so "compare the number of bus stop datasets on each portal" cannot be answered.
-  Both models said so rather than guessing.
-- **Two misses are on the expected sequence, not the answer.** Asked to delete rows, both models
-  refused on the strength of the tool description instead of calling `query_resource` and
-  letting it reject the SQL. On the ABS question, Sonnet searched directly instead of looking
-  up the publisher first. Both answers were correct; they are counted as misses anyway, because
-  the bar was set before the run.
+- **It also found a missing feature, since added.** `search_datasets` returned at most 50
+  results and dropped CKAN's total match count, so "compare the number of bus stop datasets on
+  each portal" could only be answered with the search limit. It now reports each portal's
+  total, and both models answer 469 on data.gov.au against 5 on data.sa.gov.au.
+- **The remaining misses are on the expected sequence, not the answer.** Asked to delete rows,
+  both models refused on the strength of the tool description instead of calling
+  `query_resource` and letting it reject the SQL. On the ABS question, both searched directly
+  instead of looking up the publisher first. All of those answers were correct; they are
+  counted as misses anyway, because the bar was set before the run.
+- **A single run is noisy.** Haiku passed the ABS question in one run and missed it in the
+  next, with the same server and question, so treat a one-question difference as noise.
 
 Re-run it with `uv run python evals/run_eval.py --model sonnet` (or `--model haiku`).
 

@@ -21,10 +21,18 @@ A question passes when both hold:
 
 ## Results
 
-**Model tool-selection run, 2026-10-01.** Current code (after the `list_organizations` fix
-below): Claude Sonnet 5.5 **17/20 (85%)**, Claude Haiku 4.5 **18/20 (90%)**. Before the fix,
-16/20 and 17/20. The target is not met. Runs are in `evals/runs/`: `125242`/`125244` are the
-first runs, `130244`/`130247` the runs on current code.
+**Model tool-selection run, 2026-10-01.** Current code: Claude Sonnet 5.5 **18/20 (90%)**,
+Claude Haiku 4.5 **18/20 (90%)**. The target is not met. Each run is in `evals/runs/`:
+
+| Runs | Server | Sonnet 5.5 | Haiku 4.5 |
+|---|---|---|---|
+| `125242` / `125244` | First run | 16/20 | 17/20 |
+| `130244` / `130247` | After the `list_organizations` fix | 17/20 | 18/20 |
+| `132207` / `132210` | After the `search_datasets` total-count fix (current) | 18/20 | 18/20 |
+
+Haiku's Q5 passed in the second run and missed in the third, with that question's tools
+unchanged in between. The model is not deterministic, so a one-question difference between
+runs is noise.
 
 **Server-side sequence check, 2026-09-29: 20/20.** Each question's **expected** tool sequence
 was executed directly against the service layer, against the live data.gov.au and
@@ -32,7 +40,7 @@ data.sa.gov.au APIs, checking each call succeeds and returns a correct, sourced 
 a *different and weaker* claim than the model run. It shows the tools work on real data. It
 shows nothing about whether a model would choose them.
 
-Columns below are for the current-code runs.
+Columns below are for the current-code runs, `132207` / `132210`.
 
 | # | Question | Expected tool sequence | Sonnet 5.5 | Haiku 4.5 |
 |---|---|---|---|---|
@@ -40,7 +48,7 @@ Columns below are for the current-code runs.
 | 2 | What bus stop data does South Australia have? | `search_datasets(portal="data.sa.gov.au")` | pass | pass |
 | 3 | Find federal datasets about rainfall. | `search_datasets` | pass | pass, see notes |
 | 4 | Who publishes the most datasets on data.gov.au? | `list_organizations` | pass | pass |
-| 5 | Is there ABS data about population by postcode? | `list_organizations` → `search_datasets` | **miss**: sequence | pass |
+| 5 | Is there ABS data about population by postcode? | `list_organizations` → `search_datasets` | **miss**: sequence | **miss**: sequence |
 | 6 | Show me the files in the national public toilet map dataset. | `search_datasets` → `get_dataset` | pass | pass |
 | 7 | Which files in that dataset can you actually query? | `get_dataset` (reads `queryable`) | pass | pass |
 | 8 | What columns does that CSV have? | `get_dataset` → `preview_resource` | pass | pass |
@@ -55,7 +63,7 @@ Columns below are for the current-code runs.
 | 17 | Is 51 824 753 556 a valid ABN? | `validate_abn` → valid | pass | pass |
 | 18 | Is 51 824 753 557 a valid ABN? | `validate_abn` → invalid, checksum | pass | pass |
 | 19 | What Australian financial year is 23 September 2026 in? | `au_financial_year` → FY2026-27 | pass | pass |
-| 20 | Compare bus stop dataset counts between the federal and SA portals. | `search_datasets(portal="all")` | **miss**: tool gap | **miss**: tool gap |
+| 20 | Compare bus stop dataset counts between the federal and SA portals. | `search_datasets(portal="all")` | pass | pass, see notes |
 
 ## Notes on failures
 
@@ -72,21 +80,25 @@ description or tool bug before it is a model bug.
   is more than an MCP client takes as one tool result, and Claude Code spilled it to a file the
   model could not read. `list_organizations` now takes a `limit` (default 20). On current code
   both models answer Geoscience Australia, 42,411 datasets, in one call.
-- **Q20: a tool gap, still open.** `search_datasets` returns at most 50 summaries and drops
-  CKAN's `count` of total matches, so the two portals' counts cannot be compared. Both models
-  searched each portal with `limit=50`, reported "50 (the limit, so likely more)" against 5,
-  and said the federal figure was capped. That is honest, but it does not answer the question.
-  The fix is for `search_datasets` to return the total alongside the results, which changes the
-  tool's response shape on MCP and REST.
+- **Q20, first two runs: a missing feature, now added.** `search_datasets` returned at most 50
+  summaries and dropped CKAN's `count` of total matches, so the two portals' counts could not
+  be compared. Both models searched each portal with `limit=50`, reported "50 (the limit, so
+  likely more)" against 5, and said the federal figure was capped. That was honest, but it did
+  not answer the question. `search_datasets` now returns `total_matches` per portal next to
+  `results`. On current code both models answer 469 against 5. Sonnet adds that these are
+  keyword matches, and that only about 15–20 of the first 50 federal hits are really bus-stop
+  datasets. Haiku calls all 469 "bus stop datasets", which overstates it; that passes, because
+  the count itself is right.
 - **Q16: a sequence miss with a correct answer.** Both models refused the DELETE from the
   `query_resource` description ("a single SELECT") without calling it, so `SqlRejected` never
   fired. Refusing up front is arguably better behaviour. The server-side rejection is covered by
   `tests/test_safety_sql.py` either way. Counted as a miss because the expectation was set
   before the run.
-- **Q5 (Sonnet): a sequence miss with a correct answer.** Sonnet searched for "ABS population
-  postcode" directly instead of looking up the publisher first, and correctly said data.gov.au
-  holds no postcode-level ABS population table. Its ABS population data there is by SA2, LGA
-  and GCCSA, which was checked against the live portal. The expected sequence may be
+- **Q5 (both): a sequence miss with a correct answer.** Both models searched for ABS
+  population data directly instead of looking up the publisher first. Both correctly said
+  data.gov.au holds no postcode-level ABS population table. Its ABS population data there is by
+  SA2, LGA and GCCSA, which was checked against the live portal. Haiku did call
+  `list_organizations` in the previous run, which shows how much this one varies. The expected sequence may be
   over-specified: the ABS appears under four publisher names on data.gov.au, so filtering by
   any single one would miss data.
 - **Q15 (both): passed, but not the expected way.** Neither model read `queryable: no` from the
@@ -94,9 +106,11 @@ description or tool bug before it is a model bug.
   server refused with "format 'PDF' is not tabular". The user asked them to try, and the
   refusal was explained, so this passes.
 - **Q3 (Haiku): passed with a caveat.** data.gov.au's top "rainfall" results are Tasmanian and
-  NSW state datasets. Sonnet said so; Haiku called them "federal rainfall datasets".
-- **Q14 (Sonnet):** the first `query_resource` call had empty arguments. The tool rejected it,
-  and the retry was correct.
+  NSW state datasets. Sonnet said so, and with the new total it now reports about 1,860 matches
+  before picking out the Bureau of Meteorology and CSIRO ones. Haiku called all 1,861 "federal
+  rainfall datasets".
+- **Q14 (Sonnet, second run):** the first `query_resource` call had empty arguments. The tool
+  rejected it, and the retry was correct.
 - **Not a failure, worth knowing.** In `scripts/demo.py`, asked "which state has the most
   public toilets?", Sonnet usually skipped `preview_resource` and guessed the `State` column
   from the dataset description. The guess was right, but this server's "preview before you

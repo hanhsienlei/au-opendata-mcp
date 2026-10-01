@@ -165,7 +165,7 @@ The intended workflow is:
 | Tool | Inputs | Returns |
 | --- | --- | --- |
 | `list_portals` | — | id, label, site URL, dataset count |
-| `search_datasets` | `q`, `portal`, `organisation`, `format`, `limit` (≤ 50, default 20) | id, title, organisation, formats, modified, licence, dataset URL |
+| `search_datasets` | `q`, `portal`, `organisation`, `format`, `limit` (≤ 50, default 20) | `total_matches` per portal, and `results`: id, title, organisation, formats, modified, licence, dataset URL |
 | `get_dataset` | `dataset_id`, `portal` | metadata, licence, resources with `queryable` flag |
 | `list_organizations` | `portal`, `q` | name, title, dataset count |
 | `preview_resource` | `resource_id`, `portal`, `limit` (≤ 20, default 20) | columns with types, sample rows, total row count, `source` |
