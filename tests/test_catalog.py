@@ -161,7 +161,7 @@ async def test_search_across_all_portals_merges_and_tags_each_result():
     assert {r.portal for r in results} == {"data.gov.au", "data.sa.gov.au"}
 
 
-# --- fix: a fan-out failure must never be silent (partial degradation is logged,
+# --- A fan-out failure must never be silent (partial degradation is logged,
 # total outage raises rather than returning an indistinguishable-from-empty list) ---
 
 
@@ -203,7 +203,7 @@ async def test_organisation_and_format_become_ckan_filter_queries():
     assert 'res_format:"CSV"' in fq
 
 
-# --- correction 2: parse a RECORDED fixture end-to-end, not just the synthetic DATASET ---
+# --- Parse a RECORDED fixture end-to-end, not just the synthetic DATASET ---
 
 
 @respx.mock
@@ -257,7 +257,7 @@ async def test_missing_dataset_raises_resource_not_found():
         await build_service().get_dataset("nope")
 
 
-# --- correction 2: parse a RECORDED fixture end-to-end for get_dataset too ---
+# --- Parse a RECORDED fixture end-to-end for get_dataset too ---
 
 
 @respx.mock
@@ -403,7 +403,7 @@ async def test_list_organizations_all_portals_raises_when_every_portal_fails():
     assert "data.gov.au" in str(exc.value) and "data.sa.gov.au" in str(exc.value)
 
 
-# --- unknown portal must fail loudly, before Tasks 9-12 copy the _client() pattern ---
+# --- An unknown portal must fail loudly, naming the valid ones ---
 
 
 async def test_unknown_portal_raises_value_error_naming_valid_portals():
