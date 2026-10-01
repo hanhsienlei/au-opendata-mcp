@@ -8,6 +8,13 @@ Covers [data.gov.au](https://data.gov.au) (the federal catalogue) and
 [data.sa.gov.au](https://data.sa.gov.au) (South Australia). Both run CKAN; `list_portals`
 reports each portal's current dataset count.
 
+![A model answers "which state has the most public toilets?" through the server: it searches
+the catalogue, opens the dataset, previews the CSV's columns, runs one SQL query, and cites the
+source and licence](docs/demo.gif)
+
+*A real run, recorded with `scripts/demo.py`: Claude Sonnet 5.5 with this server as its only
+tool source. Pauses longer than 1.5 s are trimmed.*
+
 ## Quickstart
 
 ```bash
@@ -43,7 +50,7 @@ passed (see `main.py`). Restart Claude Desktop after editing the config.
 | `list_portals` | The portals available, with dataset counts |
 | `search_datasets` | Keyword search; one portal or both |
 | `get_dataset` | A dataset's metadata and files, each flagged queryable or not |
-| `list_organizations` | The publishers on a portal, with how many datasets each has |
+| `list_organizations` | The publishers on a portal, largest first, with how many datasets each has |
 | `preview_resource` | A file's columns, types, sample rows and row count |
 | `query_resource` | A single DuckDB `SELECT` over the file, exposed as table `t` |
 | `validate_abn` | ABN checksum, per the ATO algorithm |
@@ -140,7 +147,7 @@ wants rather than which tool to call, so what you see is the tool selection a re
 get, across the intended chain `search_datasets` → `get_dataset` → `preview_resource` →
 `query_resource`.
 
-These are scenarios to try, not a transcript. As with the evaluation below, they have not
+These are scenarios to try, not a transcript. Unlike the evaluation below, they have not
 been run and recorded here, so no output or success rate is reproduced.
 
 **1. Catalog search.**
@@ -177,19 +184,45 @@ needs a portal, so both answer even if data.gov.au is down.
 
 ## Evaluation
 
-`evals/questions.md` has a 20-question tool-call evaluation harness: for each question, the
-tool sequence a correct response should produce.
+`evals/questions.md` has 20 questions, each with the tool sequence a correct response should
+produce. `evals/run_eval.py` asks them of a real model through Claude Code's headless mode,
+with this server as its only tool source: no built-in tools, no other MCP servers, no user
+settings, and a one-line system prompt. The model sees only what any MCP client sees, the tool
+names, descriptions and schemas, so the score is a test of those descriptions. Questions 6–16
+run as one conversation, the way a user would ask them.
 
-**The headline metric — whether a model picks those sequences — has not been run.** It needs
-the server wired into Claude Desktop and a human working through the questions, so no score
-for it is claimed here or anywhere else in this repo; a number with no run behind it is worse
-than no number. Run it with the Claude Desktop config above and fill in the results table.
+A question passes when the model calls the expected tools in order and gives a correct, sourced
+answer. A dataset or preview it already fetched earlier in the same conversation counts. The
+runner checks the tool sequence; the answers were graded by hand.
 
-What *has* been run is a weaker, server-side check: on 2026-09-29, each question's **expected**
-tool sequence was executed directly against the live data.gov.au and data.sa.gov.au APIs, and
-all 20 succeeded and returned correct, sourced answers. That establishes the tools work on real
-data today. It establishes nothing about tool *selection*, which is what the metric above
-measures — the two are deliberately reported apart.
+| Run, 2026-10-01 | Claude Sonnet 5.5 | Claude Haiku 4.5 |
+|---|---|---|
+| Before the `list_organizations` fix | 16/20 | 17/20 |
+| **Current code** | **17/20 (85%)** | **18/20 (90%)** |
+
+The target was 95%, and it is not met. Per-question results and notes are in
+`evals/questions.md`, and each run's tool calls and answers are in `evals/runs/`. In short:
+
+- **The first run found a real bug.** `list_organizations` returned 25 of data.gov.au's 1,142
+  publishers, because CKAN caps `organization_list` at 25 rows when it returns full records.
+  Asked who publishes the most datasets, Sonnet said the list looked truncated, and Haiku
+  confidently named the wrong publisher. Publishers now come from a search facet, largest
+  first, and both models answer Geoscience Australia (42,411 datasets) in one call.
+- **One gap is still open.** `search_datasets` returns at most 50 results and not CKAN's total
+  match count, so "compare the number of bus stop datasets on each portal" cannot be answered.
+  Both models said so rather than guessing.
+- **Two misses are on the expected sequence, not the answer.** Asked to delete rows, both models
+  refused on the strength of the tool description instead of calling `query_resource` and
+  letting it reject the SQL. On the ABS question, Sonnet searched directly instead of looking
+  up the publisher first. Both answers were correct; they are counted as misses anyway, because
+  the bar was set before the run.
+
+Re-run it with `uv run python evals/run_eval.py --model sonnet` (or `--model haiku`).
+
+A separate, weaker check ran on 2026-09-29: each question's **expected** tool sequence was
+executed directly against the live portals, and all 20 succeeded and returned correct, sourced
+answers. That shows the tools work on real data. It shows nothing about whether a model would
+choose them, which is what the table above measures.
 
 ## Development
 
