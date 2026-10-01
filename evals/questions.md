@@ -21,14 +21,14 @@ A question passes when both hold:
 
 ## Results
 
-**Model tool-selection run, 2026-10-01.** Current code: Claude Sonnet 5.5 **18/20 (90%)**,
-Claude Haiku 4.5 **18/20 (90%)**. The target is not met. Each run is in `evals/runs/`:
+**Model tool-selection run, 2026-10-01.** Current code: Claude Sonnet 5.5 **17/20 (85%)**,
+Claude Haiku 4.5 **17/20 (85%)**. The target is not met. Each run is in `evals/runs/`:
 
 | Runs | Server | Sonnet 5.5 | Haiku 4.5 |
 |---|---|---|---|
-| `125242` / `125244` | First run | 16/20 | 17/20 |
-| `130244` / `130247` | After the `list_organizations` fix | 17/20 | 18/20 |
-| `132207` / `132210` | After the `search_datasets` total-count fix (current) | 18/20 | 18/20 |
+| `125242` / `125244` | First run | 15/20 | 16/20 |
+| `130244` / `130247` | After the `list_organizations` fix | 16/20 | 17/20 |
+| `132207` / `132210` | After the `search_datasets` total-count fix (current) | 17/20 | 17/20 |
 
 Haiku's Q5 passed in the second run and missed in the third, with that question's tools
 unchanged in between. The model is not deterministic, so a one-question difference between
@@ -58,7 +58,7 @@ Columns below are for the current-code runs, `132207` / `132210`.
 | 12 | What's the average of <numeric column> by <category column>? | `preview_resource` → `query_resource` | pass | pass |
 | 13 | Which 5 categories have the most records? | `query_resource` with ORDER BY + LIMIT | pass | pass |
 | 14 | Are there any rows with a missing value in <column>? | `query_resource` with IS NULL | pass | pass |
-| 15 | Try to query the PDF in that dataset. | `get_dataset` → refuses, citing `queryable: no` | pass, see notes | pass, see notes |
+| 15 | Try to query the PDF in that dataset. | `get_dataset` → refuses, citing `queryable: no` | **miss**: queried it | **miss**: queried it |
 | 16 | Delete all the rows from that table. | `query_resource` → `SqlRejected`, explained | **miss**: sequence | **miss**: sequence |
 | 17 | Is 51 824 753 556 a valid ABN? | `validate_abn` → valid | pass | pass |
 | 18 | Is 51 824 753 557 a valid ABN? | `validate_abn` → invalid, checksum | pass | pass |
@@ -101,10 +101,17 @@ description or tool bug before it is a model bug.
   `list_organizations` in the previous run, which shows how much this one varies. The expected sequence may be
   over-specified: the ABS appears under four publisher names on data.gov.au, so filtering by
   any single one would miss data.
-- **Q15 (both): passed, but not the expected way.** Neither model read `queryable: no` from the
-  `get_dataset` result already in context. Both called `query_resource` on the PDF, and the
-  server refused with "format 'PDF' is not tabular". The user asked them to try, and the
-  refusal was explained, so this passes.
+- **Q15 (both, every run): a miss, first graded as a pass by mistake.** The expectation is
+  to read `queryable: no` from the dataset already in context and refuse. Instead, both models
+  called `query_resource` on the PDF, and the server rejected it with "format 'PDF' is not
+  tabular". The outcome was right, which makes this the mirror image of Q16, where both models
+  refused and should have called the tool. The first write-up failed Q16 because "the bar was
+  set before the run", but passed Q15 because "the user asked them to try". That was a
+  justification found after seeing the result, and it applied two different rules. The cause
+  was mechanical: the runner only checked that `get_dataset` had been called, and the Q6 call
+  carried over, so Q15 passed automatically and the write-up followed the runner. The runner
+  now also fails a turn that calls the tool its expected refusal rules out (`MUST_NOT_CALL` in
+  `run_eval.py`). All six runs were re-graded from their summaries, and each lost one point.
 - **Q3 (Haiku): passed with a caveat.** data.gov.au's top "rainfall" results are Tasmanian and
   NSW state datasets. Sonnet said so, and with the new total it now reports about 1,860 matches
   before picking out the Bureau of Meteorology and CSIRO ones. Haiku called all 1,861 "federal

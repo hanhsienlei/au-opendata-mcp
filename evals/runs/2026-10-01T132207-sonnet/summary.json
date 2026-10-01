@@ -2,7 +2,7 @@
   "model": "sonnet",
   "run_at": "2026-10-01T132207",
   "system_prompt": "You are a helpful assistant with access to tools.",
-  "sequence_ok": 18,
+  "sequence_ok": 17,
   "strict_ok": 11,
   "total": 20,
   "questions": [
@@ -296,7 +296,7 @@
           }
         }
       ],
-      "sequence_ok": true,
+      "sequence_ok": false,
       "strict_ok": false,
       "is_error": false,
       "answer": "The query failed. The tool rejected it because a PDF isn't tabular data, which is what I expected from the earlier listing.\n\nYou can download the Release Notes PDF (about 66 KB) directly here:\nhttps://data.gov.au/data/dataset/553b3049-2b8b-46a2-95e6-640d7986a8c1/resource/cc5aff29-786e-4548-ba2c-5a58fb05f144/download/release-notes.pdf\n\nI can't read PDFs with these tools. If you paste its text here, I can summarise it or relate it to the CSV columns."

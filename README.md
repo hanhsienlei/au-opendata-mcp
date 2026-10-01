@@ -197,9 +197,9 @@ runner checks the tool sequence; the answers were graded by hand.
 
 | Run, 2026-10-01 | Claude Sonnet 5.5 | Claude Haiku 4.5 |
 |---|---|---|
-| First run | 16/20 | 17/20 |
-| After the `list_organizations` fix | 17/20 | 18/20 |
-| **Current code**, after the `search_datasets` total-count fix | **18/20 (90%)** | **18/20 (90%)** |
+| First run | 15/20 | 16/20 |
+| After the `list_organizations` fix | 16/20 | 17/20 |
+| **Current code**, after the `search_datasets` total-count fix | **17/20 (85%)** | **17/20 (85%)** |
 
 The target was 95%, and it is not met. Per-question results and notes are in
 `evals/questions.md`, and each run's tool calls and answers are in `evals/runs/`. In short:
@@ -213,11 +213,17 @@ The target was 95%, and it is not met. Per-question results and notes are in
   results and dropped CKAN's total match count, so "compare the number of bus stop datasets on
   each portal" could only be answered with the search limit. It now reports each portal's
   total, and both models answer 469 on data.gov.au against 5 on data.sa.gov.au.
-- **The remaining misses are on the expected sequence, not the answer.** Asked to delete rows,
+- **The remaining misses are on the expected path, not the answer.** Asked to delete rows,
   both models refused on the strength of the tool description instead of calling
-  `query_resource` and letting it reject the SQL. On the ABS question, both searched directly
-  instead of looking up the publisher first. All of those answers were correct; they are
-  counted as misses anyway, because the bar was set before the run.
+  `query_resource` and letting it reject the SQL. Asked to query the PDF, both did the
+  opposite: they called `query_resource` instead of refusing on the `queryable: no` flag they
+  already had. On the ABS question, both searched directly instead of looking up the publisher
+  first. All of those answers were correct; they are counted as misses anyway, because the bar
+  was set before the run.
+- **The PDF question was first graded as a pass, which was a mistake.** The runner let a
+  dataset lookup from earlier in the conversation satisfy it, and the first write-up excused
+  the query while failing the mirror-image delete question. The runner now catches this case,
+  and every run above was re-graded, losing one point each.
 - **A single run is noisy.** Haiku passed the ABS question in one run and missed it in the
   next, with the same server and question, so treat a one-question difference as noise.
 

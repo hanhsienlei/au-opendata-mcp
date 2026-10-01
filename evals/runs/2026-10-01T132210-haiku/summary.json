@@ -2,7 +2,7 @@
   "model": "haiku",
   "run_at": "2026-10-01T132210",
   "system_prompt": "You are a helpful assistant with access to tools.",
-  "sequence_ok": 18,
+  "sequence_ok": 17,
   "strict_ok": 11,
   "total": 20,
   "questions": [
@@ -304,7 +304,7 @@
           }
         }
       ],
-      "sequence_ok": true,
+      "sequence_ok": false,
       "strict_ok": false,
       "is_error": false,
       "answer": "As expected, the PDF file cannot be queried. The system returned an error because **PDF format is not tabular data** — SQL queries only work on structured, tabular resources like CSV files.\n\nHowever, if you want to download the Release Notes PDF directly, you can access it here:\nhttps://data.gov.au/data/dataset/553b3049-2b8b-46a2-95e6-640d7986a8c1/resource/cc5aff29-786e-4548-ba2c-5a58fb05f144/download/release-notes.pdf\n\nOnly the **Toiletmap.csv** file in this dataset is queryable with SQL."

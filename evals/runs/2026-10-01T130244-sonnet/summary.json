@@ -2,7 +2,7 @@
   "model": "sonnet",
   "run_at": "2026-10-01T130244",
   "system_prompt": "You are a helpful assistant with access to tools.",
-  "sequence_ok": 18,
+  "sequence_ok": 17,
   "strict_ok": 11,
   "total": 20,
   "questions": [
@@ -289,7 +289,7 @@
           }
         }
       ],
-      "sequence_ok": true,
+      "sequence_ok": false,
       "strict_ok": false,
       "is_error": false,
       "answer": "The query failed, as expected: `format 'PDF' is not tabular`. The query tool only works on tabular files, so I can't read the Release Notes PDF through it.\n\nYou can download the PDF directly here: https://data.gov.au/data/dataset/553b3049-2b8b-46a2-95e6-640d7986a8c1/resource/cc5aff29-786e-4548-ba2c-5a58fb05f144/download/release-notes.pdf\n\nIf you save it into the working directory, I may be able to read it from there. I can also keep querying the CSV."

@@ -13,7 +13,7 @@ conversation, resumed turn by turn. Every other question runs in a fresh session
     uv run python evals/run_eval.py --only 1 17      # a subset
     uv run python evals/run_eval.py --model haiku
 
-    uv run python evals/run_eval.py --regrade evals/runs/<run>   # re-score saved transcripts
+    uv run python evals/run_eval.py --regrade evals/runs/<run>   # re-score a saved run
 
 Each run writes evals/runs/<timestamp>-<model>/ with a summary.json of the tool calls and
 final answers, plus the raw stream-json transcript per question. The transcripts carry local
@@ -55,6 +55,10 @@ SYSTEM_PROMPT = "You are a helpful assistant with access to tools."
 CHAINED = list(range(6, 17))
 # Tools whose result, once in a conversation, a later question may answer from.
 REUSABLE = {"get_dataset", "preview_resource"}
+# Questions whose expected answer is a refusal, and the tool calling which is the opposite of
+# refusing. Without this, Q15 ("read queryable: no and refuse") passed on a get_dataset call
+# carried over from Q6, even when the model went on to query the PDF in that very turn.
+MUST_NOT_CALL = {15: {"query_resource"}}
 
 # Questions 12 and 14 are templates; a human running the eval fills in real columns after
 # seeing the preview. These are the toilet map CSV's real column names. Its only numeric
@@ -79,6 +83,7 @@ class Turn:
     expected: list[str]
     calls: list[dict[str, object]] = field(default_factory=list)
     earlier: list[str] = field(default_factory=list)  # tools called earlier in this chain
+    forbidden: set[str] = field(default_factory=set)  # see MUST_NOT_CALL
     answer: str = ""
     session_id: str = ""
     is_error: bool = False
@@ -88,9 +93,14 @@ class Turn:
         return [str(c["tool"]) for c in self.calls]
 
     @property
+    def refused(self) -> bool:
+        """None of this turn's calls is one its expected refusal rules out."""
+        return not self.forbidden & set(self.tools_called)
+
+    @property
     def strict_ok(self) -> bool:
         """The expected tools appear, in order, among this turn's calls. Extras allowed."""
-        return _in_order(self.expected, self.tools_called)
+        return self.refused and _in_order(self.expected, self.tools_called)
 
     @property
     def sequence_ok(self) -> bool:
@@ -99,9 +109,10 @@ class Turn:
         In the chained questions the model may answer from a dataset or preview already in
         context instead of fetching it again. Re-fetching would not make that answer more
         right, so it is not a failure. Only fetches carry over (see REUSABLE): a question
-        that needs a query run still needs it run, whatever ran before it.
+        that needs a query run still needs it run, whatever ran before it. Nor can context
+        satisfy a refusal: that is about what this turn does (see MUST_NOT_CALL).
         """
-        return _in_order(self.expected, self.earlier + self.tools_called)
+        return self.refused and _in_order(self.expected, self.earlier + self.tools_called)
 
 
 def _in_order(expected: list[str], called: list[str]) -> bool:
@@ -189,7 +200,13 @@ def grade(
     for num, events in numbered_events:
         q = questions[num]
         chained = num in CHAINED
-        turn = Turn(num, prompt_for(q), q.expected, earlier=list(chain_tools) if chained else [])
+        turn = Turn(
+            num,
+            prompt_for(q),
+            q.expected,
+            earlier=list(chain_tools) if chained else [],
+            forbidden=MUST_NOT_CALL.get(num, set()),
+        )
         record(turn, events)
         if chained:
             chain_tools += [t for t in turn.tools_called if t in REUSABLE]
@@ -228,10 +245,25 @@ def live_events(
 
 
 def saved_events(run_dir: pathlib.Path) -> Iterator[tuple[int, Events]]:
-    """Replay a previous run's transcripts, so it can be re-graded without re-asking."""
-    for path in sorted(run_dir.glob("q*.jsonl")):
-        lines = path.read_text().splitlines()
-        yield int(path.stem[1:]), [json.loads(line) for line in lines if line.strip()]
+    """Replay a previous run from its summary.json, so it can be re-graded without re-asking.
+
+    Reads the committed summary rather than the raw transcripts, which are git-ignored and so
+    do not survive a fresh clone. The summary holds every tool call and answer, which is all
+    grading uses; it is rebuilt here into the event shape record() reads.
+    """
+    summary = json.loads((run_dir / "summary.json").read_text())
+    for q in summary["questions"]:
+        calls = [
+            {"type": "tool_use", "name": TOOL_PREFIX + c["tool"], "input": c["input"]}
+            for c in q["called"]
+        ]
+        yield (
+            q["number"],
+            [
+                {"type": "assistant", "message": {"content": calls}},
+                {"type": "result", "result": q["answer"], "is_error": q["is_error"]},
+            ],
+        )
 
 
 def main() -> None:
