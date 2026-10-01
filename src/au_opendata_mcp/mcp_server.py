@@ -46,7 +46,7 @@ async def search_datasets(
     organisation: str | None = None,
     format: str | None = None,
     limit: int = 20,
-) -> list[dict[str, Any]]:
+) -> dict[str, Any]:
     """Search Australian government datasets by keyword.
 
     Args:
@@ -57,13 +57,15 @@ async def search_datasets(
         format: Optional resource format filter, e.g. "CSV".
         limit: Maximum datasets to return, capped at 50.
 
-    Returns dataset id, title, publisher, licence, available formats and the dataset URL.
-    Follow up with get_dataset to see a dataset's individual resources."""
+    Returns total_matches, each portal's count of every matching dataset (use this for "how
+    many" questions; results is only the first page), and results: each dataset's id, title,
+    publisher, licence, available formats and URL. Follow up with get_dataset to see a
+    dataset's individual resources."""
     try:
-        results = await get_services().catalog.search_datasets(
+        search = await get_services().catalog.search_datasets(
             q=q, portal=portal, organisation=organisation, format=format, limit=limit
         )
-        return [r.model_dump() for r in results]
+        return search.model_dump()
     except ValueError as exc:
         raise ToolError(str(exc)) from exc
     except AuOpenDataError as exc:

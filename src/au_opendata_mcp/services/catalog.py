@@ -47,6 +47,17 @@ class DatasetSummary(Sourced):
     modified: str | None
 
 
+class DatasetSearch(BaseModel):
+    """Search hits plus each portal's count of every match, of which `results` is a page.
+
+    A portal that could not be reached has no entry in `total_matches`, rather than 0:
+    zero would claim nothing matched there.
+    """
+
+    total_matches: dict[str, int]
+    results: list[DatasetSummary]
+
+
 class DatasetDetail(Sourced):
     dataset_id: str
     title: str
@@ -247,11 +258,16 @@ class CatalogService:
         organisation: str | None = None,
         format: str | None = None,
         limit: int = 20,
-    ) -> list[DatasetSummary]:
+    ) -> DatasetSearch:
         if portal == "all":
-            return await self._fan_out_all_portals(
-                "search_datasets",
-                lambda p: self.search_datasets(q, p.id, organisation, format, limit),
+
+            async def one(p: Portal) -> list[DatasetSearch]:
+                return [await self.search_datasets(q, p.id, organisation, format, limit)]
+
+            parts = await self._fan_out_all_portals("search_datasets", one)
+            return DatasetSearch(
+                total_matches={k: v for part in parts for k, v in part.total_matches.items()},
+                results=[hit for part in parts for hit in part.results],
             )
 
         rows = max(1, min(limit, self.settings.max_search_limit))
@@ -282,7 +298,11 @@ class CatalogService:
                     licence=_licence(ds),
                 )
             )
-        return summaries
+        total = result.get("count")
+        return DatasetSearch(
+            total_matches={portal: int(total)} if total is not None else {},
+            results=summaries,
+        )
 
     async def get_dataset(self, dataset_id: str, portal: str = "data.gov.au") -> DatasetDetail:
         result = await self._client(portal).action("package_show", {"id": dataset_id})

@@ -56,11 +56,11 @@ async def datasets(
     organisation: str | None = None,
     format: str | None = None,
     limit: int = Query(_default(20, _LIMITS.max_search_limit), ge=1, le=_LIMITS.max_search_limit),
-) -> list[dict[str, Any]]:
-    results = await get_services().catalog.search_datasets(
+) -> dict[str, Any]:
+    search = await get_services().catalog.search_datasets(
         q=q, portal=portal, organisation=organisation, format=format, limit=limit
     )
-    return [r.model_dump() for r in results]
+    return search.model_dump()
 
 
 @router.get("/datasets/{dataset_id}")

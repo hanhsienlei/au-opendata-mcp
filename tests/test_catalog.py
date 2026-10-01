@@ -127,7 +127,7 @@ async def test_search_returns_sourced_summaries():
     respx.get(url__startswith="https://data.gov.au/data/api/3/action/package_search").mock(
         return_value=httpx.Response(200, json=package_search_payload(DATASET))
     )
-    results = await build_service().search_datasets("bus stops")
+    results = (await build_service().search_datasets("bus stops")).results
     assert len(results) == 1
     hit = results[0]
     assert hit.dataset_id == "sa-bus-stops"
@@ -136,6 +136,52 @@ async def test_search_returns_sourced_summaries():
     assert hit.licence == "Creative Commons Attribution 4.0"
     assert hit.dataset_url == "https://data.gov.au/dataset/sa-bus-stops"
     assert sorted(hit.formats) == ["CSV", "PDF"]
+
+
+# The total is CKAN's count of every match, not the rows returned. Without it a caller
+# asked "how many datasets match?" can only report the limit it searched with.
+
+
+@respx.mock
+async def test_search_reports_the_portals_total_match_count_not_just_the_rows_returned():
+    payload = package_search_payload(DATASET)
+    payload["result"]["count"] = 312
+    respx.get(url__startswith="https://data.gov.au/data/api/3/action/package_search").mock(
+        return_value=httpx.Response(200, json=payload)
+    )
+    search = await build_service().search_datasets("bus stops")
+    assert search.total_matches == {"data.gov.au": 312}
+    assert len(search.results) == 1
+
+
+@respx.mock
+async def test_search_across_all_portals_reports_a_total_per_portal():
+    federal = package_search_payload(DATASET)
+    federal["result"]["count"] = 312
+    sa = package_search_payload({**DATASET, "name": "sa-only"})
+    sa["result"]["count"] = 5
+    respx.get(url__startswith="https://data.gov.au/data/api/3/action/package_search").mock(
+        return_value=httpx.Response(200, json=federal)
+    )
+    respx.get(url__startswith="https://data.sa.gov.au/data/api/3/action/package_search").mock(
+        return_value=httpx.Response(200, json=sa)
+    )
+    search = await build_service().search_datasets("bus", portal="all")
+    assert search.total_matches == {"data.gov.au": 312, "data.sa.gov.au": 5}
+
+
+@respx.mock
+async def test_a_failed_portal_has_no_total_rather_than_a_total_of_zero():
+    # Zero would read as "nothing matched there", which is a different answer from
+    # "that portal could not be reached".
+    respx.get(url__startswith="https://data.gov.au/data/api/3/action/package_search").mock(
+        return_value=httpx.Response(500)
+    )
+    respx.get(url__startswith="https://data.sa.gov.au/data/api/3/action/package_search").mock(
+        return_value=httpx.Response(200, json=package_search_payload(DATASET))
+    )
+    search = await build_service().search_datasets("bus", portal="all")
+    assert search.total_matches == {"data.sa.gov.au": 1}
 
 
 @respx.mock
@@ -157,7 +203,7 @@ async def test_search_across_all_portals_merges_and_tags_each_result():
             200, json=package_search_payload({**DATASET, "name": "sa-only"})
         )
     )
-    results = await build_service().search_datasets("bus", portal="all")
+    results = (await build_service().search_datasets("bus", portal="all")).results
     assert {r.portal for r in results} == {"data.gov.au", "data.sa.gov.au"}
 
 
@@ -174,7 +220,7 @@ async def test_search_all_portals_logs_the_failure_and_returns_the_survivor(capl
         return_value=httpx.Response(200, json=package_search_payload(DATASET))
     )
     with caplog.at_level(logging.WARNING):
-        results = await build_service().search_datasets("bus", portal="all")
+        results = (await build_service().search_datasets("bus", portal="all")).results
     assert {r.portal for r in results} == {"data.sa.gov.au"}
     assert any(r.levelno == logging.WARNING and "data.gov.au" in r.message for r in caplog.records)
 
@@ -212,7 +258,7 @@ async def test_search_parses_the_recorded_data_gov_au_fixture():
     respx.get(url__startswith="https://data.gov.au/data/api/3/action/package_search").mock(
         return_value=httpx.Response(200, json=payload)
     )
-    results = await build_service().search_datasets("bus stops")
+    results = (await build_service().search_datasets("bus stops")).results
 
     raw = payload["result"]["results"]
     assert len(results) == len(raw)
@@ -468,7 +514,7 @@ async def test_a_404_fan_out_failure_is_logged_without_the_callers_query(caplog)
         return_value=httpx.Response(200, json=package_search_payload(DATASET))
     )
     with caplog.at_level(logging.WARNING):
-        results = await build_service().search_datasets(QUERY_MARKER, portal="all")
+        results = (await build_service().search_datasets(QUERY_MARKER, portal="all")).results
     assert {r.portal for r in results} == {"data.sa.gov.au"}
     out = rendered(caplog)
     assert QUERY_MARKER not in out
@@ -490,7 +536,7 @@ async def test_a_ckan_failure_body_fan_out_is_logged_without_the_callers_query(c
         return_value=httpx.Response(200, json=package_search_payload(DATASET))
     )
     with caplog.at_level(logging.WARNING):
-        results = await build_service().search_datasets(QUERY_MARKER, portal="all")
+        results = (await build_service().search_datasets(QUERY_MARKER, portal="all")).results
     assert {r.portal for r in results} == {"data.sa.gov.au"}
     out = rendered(caplog)
     assert QUERY_MARKER not in out

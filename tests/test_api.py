@@ -30,13 +30,14 @@ DATASET = {
 def test_search_endpoint_returns_sourced_rows():
     respx.get(url__startswith="https://data.gov.au/data/api/3/action/package_search").mock(
         return_value=httpx.Response(
-            200, json={"success": True, "result": {"count": 1, "results": [DATASET]}}
+            200, json={"success": True, "result": {"count": 40, "results": [DATASET]}}
         )
     )
     with TestClient(create_app()) as c:
         body = c.get("/api/datasets", params={"q": "bus stops"}).json()
-    assert body[0]["dataset_id"] == "sa-bus-stops"
-    assert body[0]["licence"] == "CC BY 4.0"
+    assert body["total_matches"] == {"data.gov.au": 40}
+    assert body["results"][0]["dataset_id"] == "sa-bus-stops"
+    assert body["results"][0]["licence"] == "CC BY 4.0"
 
 
 @respx.mock
