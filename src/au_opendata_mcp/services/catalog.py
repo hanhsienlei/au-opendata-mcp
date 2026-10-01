@@ -325,21 +325,27 @@ class CatalogService:
                 lambda p: self.list_organizations(p.id, q),
             )
 
+        # Not organization_list: CKAN caps it at 25 rows whenever all_fields is set, which
+        # on data.gov.au is 25 of over a thousand publishers. The organization facet of a
+        # zero-row search returns every publisher with a public dataset, and its count.
         result = await self._client(portal).action(
-            "organization_list", {"all_fields": True, "limit": 1000}
+            "package_search",
+            {"rows": 0, "facet.field": '["organization"]', "facet.limit": -1},
         )
+        items = result.get("search_facets", {}).get("organization", {}).get("items", [])
         orgs = []
-        for raw in result:
+        for raw in items:
             name = raw.get("name", "")
-            title = raw.get("title")
+            title = raw.get("display_name")
             if q and q.lower() not in f"{name} {title or ''}".lower():
                 continue
             orgs.append(
                 OrganizationSummary(
                     name=name,
                     title=title,
-                    dataset_count=raw.get("package_count"),
+                    dataset_count=raw.get("count"),
                     portal=portal,
                 )
             )
+        orgs.sort(key=lambda o: o.dataset_count or 0, reverse=True)
         return orgs

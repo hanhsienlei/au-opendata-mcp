@@ -9,9 +9,7 @@ OUT = pathlib.Path(__file__).parent.parent / "tests" / "fixtures" / "ckan"
 CALLS = [
     ("data.gov.au", "package_search", {"q": "bus stops", "rows": 5}),
     ("data.gov.au", "package_show", {"id": "national-public-toilet-map"}),
-    ("data.gov.au", "organization_list", {"all_fields": True, "limit": 5}),
     ("data.sa.gov.au", "package_search", {"q": "bus stops", "rows": 5}),
-    ("data.sa.gov.au", "organization_list", {"all_fields": True, "limit": 5}),
 ]
 BASES = {
     "data.gov.au": "https://data.gov.au/data/api/3/action",

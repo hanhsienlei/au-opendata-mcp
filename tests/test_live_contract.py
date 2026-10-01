@@ -20,6 +20,20 @@ def test_sa_portal_is_still_ckan_at_the_expected_path():
     assert "datastore" in r.json()["result"]["extensions"]
 
 
+@pytest.mark.parametrize("host", ["data.gov.au", "data.sa.gov.au"])
+def test_the_organization_facet_still_lists_more_publishers_than_organization_list_caps(host):
+    # list_organizations depends on this facet because organization_list stops at 25 rows
+    # once all_fields is set. If the facet shrinks to 25 too, that workaround is gone.
+    r = httpx.get(
+        f"https://{host}/data/api/3/action/package_search",
+        params={"rows": 0, "facet.field": '["organization"]', "facet.limit": -1},
+        timeout=30.0,
+    )
+    items = r.json()["result"]["search_facets"]["organization"]["items"]
+    assert len(items) > 25
+    assert {"name", "display_name", "count"} <= set(items[0])
+
+
 def test_resource_metadata_still_carries_datastore_active():
     r = httpx.get(
         "https://data.gov.au/data/api/3/action/package_search",

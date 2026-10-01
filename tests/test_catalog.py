@@ -287,88 +287,90 @@ async def test_get_dataset_parses_the_recorded_data_gov_au_fixture():
 
 
 # --- list_organizations and list_portals ---
+#
+# Publishers come from the `organization` facet of a zero-row package_search, not from
+# organization_list. CKAN caps organization_list at 25 rows whenever all_fields is set
+# (ckan.group_and_organization_list_all_fields_max), whatever `limit` asks for, and
+# data.gov.au has over a thousand publishers -- so "who publishes the most?" was being
+# answered from the first 25 alphabetically. The facet returns every publisher that has a
+# public dataset, with its count, in one request.
+
+ORG_SEARCH = "/data/api/3/action/package_search"
+
+
+def org_facet_payload(*orgs: tuple[str, str, int]) -> dict:
+    items = [{"name": n, "display_name": t, "count": c} for n, t, c in orgs]
+    return {
+        "success": True,
+        "result": {
+            "count": sum(c for _, _, c in orgs),
+            "results": [],
+            "search_facets": {"organization": {"title": "organization", "items": items}},
+        },
+    }
+
+
+def mock_org_facet(host: str, *orgs: tuple[str, str, int]) -> respx.Route:
+    return respx.get(url__startswith=f"https://{host}{ORG_SEARCH}").mock(
+        return_value=httpx.Response(200, json=org_facet_payload(*orgs))
+    )
 
 
 @respx.mock
-async def test_list_organizations_returns_names_and_counts():
-    respx.get(url__startswith="https://data.gov.au/data/api/3/action/organization_list").mock(
-        return_value=httpx.Response(
-            200,
-            json={
-                "success": True,
-                "result": [
-                    {
-                        "name": "abs",
-                        "title": "Australian Bureau of Statistics",
-                        "package_count": 412,
-                    },
-                ],
-            },
-        )
-    )
+async def test_list_organizations_returns_names_titles_and_counts():
+    mock_org_facet("data.gov.au", ("abs", "Australian Bureau of Statistics", 412))
     orgs = await build_service().list_organizations()
     assert orgs[0].name == "abs"
+    assert orgs[0].title == "Australian Bureau of Statistics"
     assert orgs[0].dataset_count == 412
 
 
 @respx.mock
+async def test_list_organizations_returns_every_publisher_largest_first():
+    # 30 publishers, more than organization_list's 25-row all_fields cap, in the
+    # arbitrary order Solr returns facet items.
+    orgs_in = [(f"org-{i:02d}", f"Org {i}", (i * 37) % 101 + 1) for i in range(30)]
+    route = mock_org_facet("data.gov.au", *orgs_in)
+
+    orgs = await build_service().list_organizations()
+
+    assert len(orgs) == 30
+    counts = [o.dataset_count for o in orgs]
+    assert counts == sorted(counts, reverse=True)
+    params = route.calls.last.request.url.params
+    assert params["rows"] == "0"
+    assert params["facet.field"] == '["organization"]'
+    assert params["facet.limit"] == "-1"
+
+
+@respx.mock
 async def test_list_organizations_filters_by_substring_case_insensitively():
-    respx.get(url__startswith="https://data.gov.au/data/api/3/action/organization_list").mock(
-        return_value=httpx.Response(
-            200,
-            json={
-                "success": True,
-                "result": [
-                    {"name": "abs", "title": "Australian Bureau of Statistics", "package_count": 4},
-                    {"name": "aemo", "title": "Energy Market Operator", "package_count": 9},
-                ],
-            },
-        )
+    mock_org_facet(
+        "data.gov.au",
+        ("abs", "Australian Bureau of Statistics", 4),
+        ("aemo", "Energy Market Operator", 9),
     )
     orgs = await build_service().list_organizations(q="bureau")
     assert [o.name for o in orgs] == ["abs"]
 
 
-# --- correction 3: list_organizations must also support portal="all" ---
-
-
 @respx.mock
 async def test_list_organizations_across_all_portals_tags_each_by_portal():
     for host in ("data.gov.au", "data.sa.gov.au"):
-        respx.get(url__startswith=f"https://{host}/data/api/3/action/organization_list").mock(
-            return_value=httpx.Response(
-                200,
-                json={
-                    "success": True,
-                    "result": [
-                        {"name": f"org-{host}", "title": "Org", "package_count": 1},
-                    ],
-                },
-            )
-        )
+        mock_org_facet(host, (f"org-{host}", "Org", 1))
     orgs = await build_service().list_organizations(portal="all")
     assert {o.portal for o in orgs} == {"data.gov.au", "data.sa.gov.au"}
 
 
-# --- fix: same silent-fan-out-failure guard, for list_organizations ---
+# --- a fan-out over every portal must not fail silently when one portal does ---
 
 
 @respx.mock
 async def test_list_organizations_all_portals_logs_the_failure_and_returns_the_survivor(caplog):
-    respx.get(url__startswith="https://data.gov.au/data/api/3/action/organization_list").mock(
+    respx.get(url__startswith=f"https://data.gov.au{ORG_SEARCH}").mock(
         return_value=httpx.Response(500)
     )
-    respx.get(url__startswith="https://data.sa.gov.au/data/api/3/action/organization_list").mock(
-        return_value=httpx.Response(
-            200,
-            json={
-                "success": True,
-                "result": [
-                    {"name": "org-sa", "title": "Org", "package_count": 1},
-                ],
-            },
-        )
-    )
+    mock_org_facet("data.sa.gov.au", ("org-sa", "Org", 1))
     with caplog.at_level(logging.WARNING):
         orgs = await build_service().list_organizations(portal="all")
     assert {o.portal for o in orgs} == {"data.sa.gov.au"}
@@ -378,7 +380,7 @@ async def test_list_organizations_all_portals_logs_the_failure_and_returns_the_s
 @respx.mock
 async def test_list_organizations_all_portals_raises_when_every_portal_fails():
     for host in ("data.gov.au", "data.sa.gov.au"):
-        respx.get(url__startswith=f"https://{host}/data/api/3/action/organization_list").mock(
+        respx.get(url__startswith=f"https://{host}{ORG_SEARCH}").mock(
             return_value=httpx.Response(500)
         )
     with pytest.raises(UpstreamUnavailable) as exc:

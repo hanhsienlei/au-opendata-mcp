@@ -94,7 +94,9 @@ async def get_dataset(dataset_id: str, portal: str = "data.gov.au") -> dict[str,
 async def list_organizations(
     portal: str = "data.gov.au", q: str | None = None
 ) -> list[dict[str, Any]]:
-    """List the publishers on a portal, with how many datasets each has.
+    """List every publisher on a portal with how many datasets each has, largest first.
+
+    Only publishers with at least one public dataset are listed.
 
     Args:
         portal: The portal to list publishers for.
