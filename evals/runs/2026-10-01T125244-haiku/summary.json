@@ -1,0 +1,418 @@
+{
+  "model": "haiku",
+  "run_at": "2026-10-01T125244",
+  "system_prompt": "You are a helpful assistant with access to tools.",
+  "sequence_ok": 19,
+  "strict_ok": 12,
+  "total": 20,
+  "questions": [
+    {
+      "number": 1,
+      "prompt": "What open data portals can you search?",
+      "expected": [
+        "list_portals"
+      ],
+      "called": [
+        {
+          "tool": "list_portals",
+          "input": {}
+        }
+      ],
+      "sequence_ok": true,
+      "strict_ok": true,
+      "is_error": false,
+      "answer": "I can search the following Australian government open data portals:\n\n1. **data.gov.au** (Australian Government)\n   - Website: https://data.gov.au\n   - Datasets: 141,412\n\n2. **data.sa.gov.au** (South Australian Government)\n   - Website: https://data.sa.gov.au\n   - Datasets: 1,929\n\nWhen searching, I can search across all portals or target a specific one. You can ask me to find datasets by keyword, browse by publisher/organization, preview data, or run SQL queries on queryable resources. What would you like to search for?"
+    },
+    {
+      "number": 2,
+      "prompt": "What bus stop data does South Australia have?",
+      "expected": [
+        "search_datasets"
+      ],
+      "called": [
+        {
+          "tool": "search_datasets",
+          "input": {
+            "q": "bus stops",
+            "portal": "data.sa.gov.au"
+          }
+        }
+      ],
+      "sequence_ok": true,
+      "strict_ok": true,
+      "is_error": false,
+      "answer": "South Australia has several bus stop and public transport datasets available. Here are the main ones:\n\n1. **Adelaide Public Transport Stop Data**\n   - Publisher: Department for Infrastructure and Transport\n   - Formats: GEOJSON, KML, MAP VIEWER, SHP (GIS formats)\n   - Last updated: 2020-02-24\n   - Licence: Creative Commons Attribution\n   - URL: https://data.sa.gov.au/dataset/adelaide-public-transport-stop-data\n\n2. **Bus Shelters**\n   - Publisher: City of Adelaide\n   - Formats: CSV, KMZ, SHP\n   - Last updated: 2022-11-11\n   - Licence: Creative Commons Attribution\n   - URL: https://data.sa.gov.au/dataset/bus-shelters\n\n3. **Adelaide Metro General Transit Feed**\n   - Publisher: Department for Infrastructure and Transport\n   - Format: API\n   - Last updated: 2022-09-08\n   - Licence: Creative Commons Attribution\n   - URL: https://data.sa.gov.au/dataset/https-gtfs-adelaidemetro-com-au\n\n4. **Adelaide Metro Real-Time Passenger Information**\n   - Publisher: Department for Infrastructure and Transport\n   - Formats: HTML, JSON, PDF\n   - Last updated: 2020-10-30\n   - Licence: Creative Commons Attribution\n   - URL: https://data.sa.gov.au/dataset/adelaide-metro-real-time-passenger-information\n\n5. **Adelaide MetroCard Validations**\n   - Publisher: Department for Infrastructure and Transport\n   - Formats: CSV, ZIP, DOC, OTHER\n   - Last updated: 2026-07-13\n   - Licence: Creative Commons Attribution\n   - URL: https://data.sa.gov.au/dataset/adelaide-metrocard-validations\n\nThe **Adelaide Public Transport Stop Data** is likely the main dataset for bus stop locations and details. Would you like me to explore any of these datasets further?"
+    },
+    {
+      "number": 3,
+      "prompt": "Find federal datasets about rainfall.",
+      "expected": [
+        "search_datasets"
+      ],
+      "called": [
+        {
+          "tool": "search_datasets",
+          "input": {
+            "q": "rainfall",
+            "portal": "data.gov.au"
+          }
+        }
+      ],
+      "sequence_ok": true,
+      "strict_ok": true,
+      "is_error": false,
+      "answer": "I found several federal datasets about rainfall on data.gov.au:\n\n## Rainfall Datasets\n\n### 1. **Monthly average rainfall**\n- **Publisher:** Tasmania Government's The List Data\n- **URL:** https://data.gov.au/dataset/monthly-average-rainfall\n- **Formats:** HTML, PDF\n- **Licence:** Not specified\n- **Last Updated:** 2026-01-10\n\n### 2. **Monthly Rainfall Erosivity (NSW)**\nThe NSW Department of Climate Change, Energy, the Environment and Water has published multiple years of monthly rainfall erosivity data:\n\n- **Years Available:** 2001-2025 (20+ datasets)\n- **URL Pattern:** https://data.gov.au/dataset/nsw-[YEAR]-monthly-rfactor\n- **Formats:** GeoTIFF, PDF\n- **Licence:** Creative Commons Attribution 3.0 Australia\n- **Recent Updates:** Most recently modified in May 2026\n\n**Examples:**\n- 2025 Monthly Rainfall Erosivity: https://data.gov.au/dataset/nsw-2025-monthly-rfactor\n- 2023 Monthly Rainfall Erosivity: https://data.gov.au/dataset/nsw-2023-monthly-rfactor\n- 2021 Monthly Rainfall Erosivity: https://data.gov.au/dataset/nsw-2021-monthly-rfactor\n\nThe rainfall erosivity data is particularly useful for soil conservation, erosion risk assessment, and environmental management purposes. Would you like me to get more details about any of these datasets or search for additional rainfall-related data?"
+    },
+    {
+      "number": 4,
+      "prompt": "Who publishes the most datasets on data.gov.au?",
+      "expected": [
+        "list_organizations"
+      ],
+      "called": [
+        {
+          "tool": "list_organizations",
+          "input": {
+            "portal": "data.gov.au"
+          }
+        }
+      ],
+      "sequence_ok": true,
+      "strict_ok": true,
+      "is_error": false,
+      "answer": "Based on the publisher data from data.gov.au, **ACT Government Open Data** publishes the most datasets with **531 datasets**.\n\nThe top publishers are:\n1. **ACT Government Open Data** - 531 datasets\n2. **ACT Government Geospatial Data Catalogue (ACTmapi)** - 358 datasets\n3. **ABS Geospatial Solutions** - 44 datasets\n4. **ABS (SA Data)** - 19 datasets\n5. **API NSW** - 23 datasets\n\nThe ACT (Australian Capital Territory) Government clearly dominates the dataset publishing landscape on data.gov.au, with their two portals combined accounting for 889 datasets."
+    },
+    {
+      "number": 5,
+      "prompt": "Is there ABS data about population by postcode?",
+      "expected": [
+        "list_organizations",
+        "search_datasets"
+      ],
+      "called": [
+        {
+          "tool": "search_datasets",
+          "input": {
+            "q": "population postcode ABS"
+          }
+        },
+        {
+          "tool": "search_datasets",
+          "input": {
+            "q": "census population by postcode"
+          }
+        },
+        {
+          "tool": "search_datasets",
+          "input": {
+            "q": "ABS Census 2021 population statistics"
+          }
+        },
+        {
+          "tool": "list_organizations",
+          "input": {
+            "q": "Australian Bureau of Statistics"
+          }
+        },
+        {
+          "tool": "search_datasets",
+          "input": {
+            "q": "ABS postcode population SA1"
+          }
+        },
+        {
+          "tool": "search_datasets",
+          "input": {
+            "q": "census 2021 postcode population"
+          }
+        }
+      ],
+      "sequence_ok": true,
+      "strict_ok": true,
+      "is_error": false,
+      "answer": "Based on my search of Australian government open data portals, here's what I found:\n\n## ABS Population Data Available\n\nThe **Australian Bureau of Statistics (ABS) does have population data** available on data.gov.au, but **not broken down by postcode**. The available ABS population datasets are:\n\n1. **ABS - Regional Population (LGA) 2001-2021** - Population broken down by Local Government Areas\n2. **ABS - Regional Population (SA2) 2001-2021** - Population broken down by Statistical Area Level 2 (SA2)\n\nThese are the main population datasets available, with geographic breakdowns at the LGA and SA2 levels.\n\n## Why Not by Postcode?\n\nABS doesn't publish official population statistics by postcode for several reasons:\n- **Postal code areas (POAs)** are defined by Australia Post for mail delivery and don't align cleanly with ABS statistical boundaries\n- ABS uses **Statistical Areas (SA1, SA2, SA3, SA4)** and **LGAs** as their primary geographic units for census and population data\n- Postcodes and Statistical Areas have different purposes and boundaries\n\n## Related Resources\n\nI did find datasets mapping **postal areas to other geographic regions** from the Department of Health and Aged Care, such as:\n- \"Suburbs and Localities (SAL) 2021 - Postal Areas (POA) 2021\"\n- \"Postal Areas (2021) by Modified Monash Model (2023)\"\n\nThese could potentially be used to cross-reference postcode data with SA2/SA3 areas.\n\n**Would you like me to look up specific population data by SA2, SA3, or LGA instead?** Or would you like to explore the postcode mapping datasets further?"
+    },
+    {
+      "number": 6,
+      "prompt": "Show me the files in the national public toilet map dataset.",
+      "expected": [
+        "search_datasets",
+        "get_dataset"
+      ],
+      "called": [
+        {
+          "tool": "search_datasets",
+          "input": {
+            "q": "national public toilet map"
+          }
+        },
+        {
+          "tool": "get_dataset",
+          "input": {
+            "dataset_id": "national-public-toilet-map"
+          }
+        }
+      ],
+      "sequence_ok": true,
+      "strict_ok": true,
+      "is_error": false,
+      "answer": "Here are the files in the **National Public Toilet Map** dataset from the Department of Health, Disability and Ageing:\n\n| File Name | Format | Size | Queryable |\n|-----------|--------|------|-----------|\n| **Toiletmap.csv** | CSV | 12.1 MB | Yes |\n| **Release Notes** | PDF | 66.4 KB | No |\n\n**Dataset Details:**\n- **Title:** National Public Toilet Map\n- **Publisher:** Department of Health, Disability and Ageing\n- **License:** Creative Commons Attribution 3.0 Australia\n- **Last Modified:** 30 September 2026\n- **Description:** Shows the location of more than 17,000 public and private public toilet facilities across Australia, including information about location, opening hours, baby change rooms, accessibility for people with disabilities, and nearby toilets\n\n**Key Data Fields Available:**\n- Toilet name and address\n- Latitude and longitude\n- Opening hours\n- Accessibility information\n- Features (showers, baby change facilities, etc.)\n- General toilet features and notes\n\nThe main data is in the CSV file, which is queryable. You can access it at: https://data.gov.au/dataset/national-public-toilet-map"
+    },
+    {
+      "number": 7,
+      "prompt": "Which files in that dataset can you actually query?",
+      "expected": [
+        "get_dataset"
+      ],
+      "called": [],
+      "sequence_ok": true,
+      "strict_ok": false,
+      "is_error": false,
+      "answer": "Based on the dataset information, I can only query **one file**:\n\n1. **Toiletmap.csv** - ✅ Queryable (CSV format, tabular data)\n\nThe other file cannot be queried:\n\n2. **Release Notes** - ❌ Not queryable (PDF format is not tabular)\n\nSo if you'd like to ask questions about the toilet facilities data, I can use SQL to query the Toiletmap.csv file. Would you like me to preview it or run a specific query?"
+    },
+    {
+      "number": 8,
+      "prompt": "What columns does that CSV have?",
+      "expected": [
+        "get_dataset",
+        "preview_resource"
+      ],
+      "called": [
+        {
+          "tool": "preview_resource",
+          "input": {
+            "resource_id": "34076296-6692-4e30-b627-67b7c4eb1027"
+          }
+        }
+      ],
+      "sequence_ok": true,
+      "strict_ok": false,
+      "is_error": false,
+      "answer": "The Toiletmap.csv has **46 columns** with a total of **25,624 toilet facility records**. Here's the complete list organized by category:\n\n**Location & Identity:**\n- `_id` - Internal ID\n- `FacilityID` - Facility identifier\n- `URL` - Link to facility details\n- `Name` - Toilet name\n- `FacilityType` - Type (Park or reserve, Sporting facility, etc.)\n- `Address1` - Street address\n- `Town` - Town/suburb\n- `State` - Australian state\n- `AddressNote` - Additional address information\n- `Latitude`, `Longitude` - GPS coordinates\n\n**Parking:**\n- `Parking` - Parking available (Yes/No)\n- `ParkingAccessible` - Accessible parking available\n- `ParkingNote` - Parking details\n\n**Access:**\n- `KeyRequired` - Requires key access\n- `MLAK24` - 24-hour key access (MLAK)\n- `MLAKAfterHours` - After-hours key access\n- `PaymentRequired` - Payment required\n- `AccessNote` - Access information\n\n**Adult Facilities:**\n- `AdultChange` - Adult change facilities\n- `ChangingPlaces` - Changing Places facility\n- `BYOSling` - Bring Your Own Sling available\n- `ACShower` - Accessible shower\n- `ACMLAK` - Accessible MLAK\n- `AdultChangeNote` - Adult change details\n\n**Baby/Family Facilities:**\n- `BabyChange` - Baby change table\n- `BabyCareRoom` - Baby care room\n- `BabyChangeNote` - Baby change details\n\n**Dump Point (RV):**\n- `DumpPoint` - Dump point available\n- `DPWashout` - Dump point washout\n- `DPAfterHours` - After-hours dump point access\n- `DumpPointNote` - Dump point details\n\n**Hours & Toilet Types:**\n- `OpeningHours` - Operating hours\n- `OpeningHoursNote` - Hours details\n- `Male` - Male toilet available\n- `Female` - Female toilet available\n- `Unisex` - Unisex toilet available\n- `AllGender` - All gender toilet available\n\n**Accessibility Features:**\n- `Ambulant` - Ambulant accessible\n- `Accessible` - Accessible (standard)\n- `LHTransfer` - Left-hand transfer available\n- `RHTransfer` - Right-hand transfer available\n- `ToiletNote` - Toilet details\n\n**Amenities:**\n- `SharpsDisposal` - Sharps disposal\n- `DrinkingWater` - Drinking water\n- `SanitaryDisposal` - Sanitary disposal\n- `MensPadDisposal` - Menstrual pad disposal\n- `Shower` - Shower facility\n\nWould you like me to run a specific query on this data?"
+    },
+    {
+      "number": 9,
+      "prompt": "How many rows are in it?",
+      "expected": [
+        "preview_resource"
+      ],
+      "called": [],
+      "sequence_ok": true,
+      "strict_ok": false,
+      "is_error": false,
+      "answer": "The Toiletmap.csv has **25,624 rows** (toilet facility records)."
+    },
+    {
+      "number": 10,
+      "prompt": "Show me the first few rows.",
+      "expected": [
+        "preview_resource"
+      ],
+      "called": [],
+      "sequence_ok": true,
+      "strict_ok": false,
+      "is_error": false,
+      "answer": "Here are the first 5 rows from the Toiletmap.csv:\n\n| Name | Town | State | FacilityType | Accessible | OpeningHours | Male | Female | Unisex |\n|------|------|-------|--------------|-----------|--------------|------|--------|--------|\n| Sandy Beach Reserve | Bassendean | WA | Park or reserve | True | OPEN: 24 hours | False | False | True |\n| Point Reserve | Bassendean | WA | Park or reserve | True | OPEN: Daylight hours | False | False | True |\n| Success Hill Reserve | Bassendean | WA | Park or reserve | True | OPEN: Daylight hours | True | True | False |\n| Jubilee Reserve | Eden Hill | WA | Park or reserve | False | OPEN: Daylight hours | True | True | False |\n| Ashfield Reserve | Ashfield | WA | Park or reserve | True | OPEN: Fri-Sun 6:30am-6pm, Mon-Thu 6:30am-8:30pm | False | False | True |\n\nWould you like to see more rows or get specific information from the dataset?"
+    },
+    {
+      "number": 11,
+      "prompt": "Count the records by state in that file.",
+      "expected": [
+        "preview_resource",
+        "query_resource"
+      ],
+      "called": [
+        {
+          "tool": "query_resource",
+          "input": {
+            "resource_id": "34076296-6692-4e30-b627-67b7c4eb1027",
+            "sql": "SELECT State, COUNT(*) as count FROM t GROUP BY State ORDER BY count DESC"
+          }
+        }
+      ],
+      "sequence_ok": true,
+      "strict_ok": false,
+      "is_error": false,
+      "answer": "Here's the count of toilet records by state:\n\n| State | Count |\n|-------|-------|\n| NSW | 7,959 |\n| VIC | 6,090 |\n| QLD | 4,784 |\n| WA | 2,925 |\n| SA | 2,175 |\n| TAS | 1,013 |\n| ACT | 344 |\n| NT | 332 |\n| (null) | 2 |\n| **Total** | **25,624** |\n\nNew South Wales has the most public toilet facilities in the dataset (7,959), followed by Victoria (6,090) and Queensland (4,784). There are also 2 records with missing state information."
+    },
+    {
+      "number": 12,
+      "prompt": "What's the average of Latitude by State?",
+      "expected": [
+        "preview_resource",
+        "query_resource"
+      ],
+      "called": [
+        {
+          "tool": "query_resource",
+          "input": {
+            "resource_id": "34076296-6692-4e30-b627-67b7c4eb1027",
+            "sql": "SELECT State, AVG(CAST(Latitude AS FLOAT)) as avg_latitude FROM t GROUP BY State ORDER BY State"
+          }
+        }
+      ],
+      "sequence_ok": true,
+      "strict_ok": false,
+      "is_error": false,
+      "answer": "Here's the average latitude by state:\n\n| State | Average Latitude |\n|-------|------------------|\n| ACT | -35.33 |\n| NSW | -33.24 |\n| NT | -16.66 |\n| QLD | -24.98 |\n| SA | -34.65 |\n| TAS | -41.97 |\n| VIC | -37.55 |\n| WA | -30.99 |\n| (null) | -32.25 |\n\nThe negative values represent southern hemisphere positions. Tasmania has the lowest (most southern) average latitude at -41.97°, while the Northern Territory has the highest (most northern) average latitude at -16.66°."
+    },
+    {
+      "number": 13,
+      "prompt": "Which 5 categories have the most records?",
+      "expected": [
+        "query_resource"
+      ],
+      "called": [
+        {
+          "tool": "query_resource",
+          "input": {
+            "resource_id": "34076296-6692-4e30-b627-67b7c4eb1027",
+            "sql": "SELECT FacilityType, COUNT(*) as count FROM t GROUP BY FacilityType ORDER BY count DESC LIMIT 5"
+          }
+        }
+      ],
+      "sequence_ok": true,
+      "strict_ok": true,
+      "is_error": false,
+      "answer": "Here are the 5 facility types with the most records:\n\n| Facility Type | Count |\n|---------------|-------|\n| Park or reserve | 10,022 |\n| Other | 3,588 |\n| Service station | 2,468 |\n| Sporting facility | 2,144 |\n| Shopping centre | 1,708 |\n\nParks and reserves account for the largest share of public toilets in the dataset, with nearly 10,000 facilities. These are followed by miscellaneous \"Other\" facilities, service stations, sporting facilities, and shopping centres."
+    },
+    {
+      "number": 14,
+      "prompt": "Are there any rows with a missing value in OpeningHours?",
+      "expected": [
+        "query_resource"
+      ],
+      "called": [
+        {
+          "tool": "query_resource",
+          "input": {
+            "resource_id": "34076296-6692-4e30-b627-67b7c4eb1027",
+            "sql": "SELECT COUNT(*) as missing_count FROM t WHERE OpeningHours IS NULL"
+          }
+        }
+      ],
+      "sequence_ok": true,
+      "strict_ok": true,
+      "is_error": false,
+      "answer": "No, there are **no missing values** in the OpeningHours column. All 25,624 records have an opening hours value specified."
+    },
+    {
+      "number": 15,
+      "prompt": "Try to query the PDF in that dataset.",
+      "expected": [
+        "get_dataset"
+      ],
+      "called": [
+        {
+          "tool": "query_resource",
+          "input": {
+            "resource_id": "cc5aff29-786e-4548-ba2c-5a58fb05f144",
+            "sql": "SELECT * FROM t LIMIT 5"
+          }
+        }
+      ],
+      "sequence_ok": true,
+      "strict_ok": false,
+      "is_error": false,
+      "answer": "As expected, I can't query the PDF file. The error message confirms that:\n\n> \"format 'PDF' is not tabular. You can download the source directly: https://data.gov.au/data/dataset/553b3049-2b8b-46a2-95e6-640d7986a8c1/resource/cc5aff29-786e-4548-ba2c-5a58fb05f144/download/release-notes.pdf\"\n\nPDFs are document files, not tabular data (rows and columns), so they can't be queried with SQL. Only the CSV file (Toiletmap.csv) in this dataset contains queryable tabular data.\n\nIf you want to view the Release Notes, you can download the PDF directly from the link above."
+    },
+    {
+      "number": 16,
+      "prompt": "Delete all the rows from that table.",
+      "expected": [
+        "query_resource"
+      ],
+      "called": [],
+      "sequence_ok": false,
+      "strict_ok": false,
+      "is_error": false,
+      "answer": "I can't do that. The query tool I have access to is **read-only** — it only allows SELECT queries for viewing data. \n\nAccording to the tool's restrictions:\n- Only SELECT statements are permitted\n- No DDL (Data Definition Language) operations like DROP, CREATE, ALTER\n- No DML (Data Manipulation Language) operations like INSERT, UPDATE, DELETE\n\nSo I can query and analyze the data, but I cannot modify or delete it. The data in the Australian government open data portal is maintained by the Department of Health, Disability and Ageing, and you would need appropriate administrative access to make changes to the official dataset."
+    },
+    {
+      "number": 17,
+      "prompt": "Is 51 824 753 556 a valid ABN?",
+      "expected": [
+        "validate_abn"
+      ],
+      "called": [
+        {
+          "tool": "validate_abn",
+          "input": {
+            "abn": "51 824 753 556"
+          }
+        }
+      ],
+      "sequence_ok": true,
+      "strict_ok": true,
+      "is_error": false,
+      "answer": "Yes, **51 824 753 556 is a valid ABN**. It passes the ATO's official checksum validation (modulus-89 calculation)."
+    },
+    {
+      "number": 18,
+      "prompt": "Is 51 824 753 557 a valid ABN?",
+      "expected": [
+        "validate_abn"
+      ],
+      "called": [
+        {
+          "tool": "validate_abn",
+          "input": {
+            "abn": "51 824 753 557"
+          }
+        }
+      ],
+      "sequence_ok": true,
+      "strict_ok": true,
+      "is_error": false,
+      "answer": "No, **51 824 753 557 is not a valid ABN**. \n\nThe validation failed because it does not pass the ATO's official checksum. Australian Business Numbers use a deterministic modulus-89 checksum calculation, and this number does not conform to that requirement."
+    },
+    {
+      "number": 19,
+      "prompt": "What Australian financial year is 23 September 2026 in?",
+      "expected": [
+        "au_financial_year"
+      ],
+      "called": [
+        {
+          "tool": "au_financial_year",
+          "input": {
+            "date": "2026-09-23"
+          }
+        }
+      ],
+      "sequence_ok": true,
+      "strict_ok": true,
+      "is_error": false,
+      "answer": "23 September 2026 is in the Australian financial year **FY2026–27**, which runs from 1 July 2026 to 30 June 2027."
+    },
+    {
+      "number": 20,
+      "prompt": "Compare bus stop dataset counts between the federal and SA portals.",
+      "expected": [
+        "search_datasets"
+      ],
+      "called": [
+        {
+          "tool": "search_datasets",
+          "input": {
+            "q": "bus stop",
+            "portal": "data.gov.au",
+            "limit": 50
+          }
+        },
+        {
+          "tool": "search_datasets",
+          "input": {
+            "q": "bus stop",
+            "portal": "data.sa.gov.au",
+            "limit": 50
+          }
+        }
+      ],
+      "sequence_ok": true,
+      "strict_ok": true,
+      "is_error": false,
+      "answer": "## Bus Stop Dataset Comparison\n\nBased on searching both portals, here's the comparison:\n\n### **Federal Portal (data.gov.au)**\n**Returned: 50 results** (hit the limit, so there may be more)\n\n**Key bus stop datasets found:**\n- Bus stops (City of Melbourne) - 2 versions\n- Bus Stop locations (Brisbane City Council)\n- CMB Bus Stops (City of Moreton Bay)\n- Bus Stops/Locations (City of Casey) - 2 versions\n- Bus_Stops_July_2017 (ACT Government)\n- Noosa Bus Stop Shelters (Noosa Shire Council)\n- Townsville Bus Stops and Shelters (Townsville City Council)\n- City of Port Phillip Community Bus Stops\n- Public Transport Authority Stops (Western Australia)\n- Bus Shelters (City of Adelaide, City of Ballarat)\n- Bus stops for Melbourne Visitor Shuttle - 2 versions\n- Plus many related datasets on bus routes, schedules, and performance data\n\n### **SA Portal (data.sa.gov.au)**\n**Returned: 5 results total**\n\n**Bus stop-related datasets:**\n1. Adelaide Public Transport Stop Data\n2. Bus Shelters (City of Adelaide)\n3. Adelaide Metro General Transit Feed (GTFS API)\n4. Adelaide Metro Validations\n5. Adelaide Metro Real-Time Passenger Information\n\n### **Summary**\nThe **federal portal (data.gov.au) has significantly more bus stop datasets** — at least 13-15 dedicated bus stop datasets from various councils across Australia, plus additional transit-related data. The **SA portal (data.sa.gov.au) has a smaller collection** with 2 specifically about bus stops/shelters, plus 3 additional transit datasets focused on Adelaide Metro services."
+    }
+  ]
+}

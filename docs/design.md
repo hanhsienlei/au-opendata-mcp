@@ -403,7 +403,7 @@ Implementation is test-first throughout: red, green, refactor, per behaviour.
 
 | Metric | Proof |
 | --- | --- |
-| ≥ 95% tool-call success over 20 questions | `evals/questions.md` lists 20 questions with the tool sequence each should produce. Run manually against Claude Desktop; the results table and run date are pasted into the README. Not automated — an automated LLM evaluation harness is a separate project, and the README says so. |
+| ≥ 95% tool-call success over 20 questions | `evals/questions.md` lists 20 questions with the tool sequence each should produce. `evals/run_eval.py` asks them of a real model through Claude Code's headless mode, with this server as its only tool source, and checks the tool sequence; answers are graded by hand. The results table and run date go in the README and `evals/questions.md`. |
 | 3 reproducible demo scenarios | Catalog search, an aggregate query over a real resource, and ABN validation. Written into the README with exact prompts. |
 | Local setup under 5 minutes | README quickstart: clone, `uv sync`, run, plus the Claude Desktop config block to paste. |
 | ≥ 80% service-layer coverage | CI gate, not a claim. |

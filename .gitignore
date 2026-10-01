@@ -10,3 +10,6 @@ __pycache__/
 htmlcov/
 dist/
 build/
+
+# Raw eval transcripts carry local paths and account metadata; summary.json is the record.
+evals/runs/*/*.jsonl
