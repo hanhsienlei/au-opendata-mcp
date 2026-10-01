@@ -18,7 +18,7 @@ tool source. Pauses longer than 1.5 s are trimmed.*
 ## Quickstart
 
 ```bash
-git clone https://github.com/<your-username>/au-opendata-mcp   # replace <your-username>
+git clone https://github.com/hanhsienlei/au-opendata-mcp
 cd au-opendata-mcp
 uv sync
 uv run au-opendata-mcp --transport http --port 8000   # REST + MCP over HTTP

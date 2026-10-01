@@ -11,5 +11,8 @@ htmlcov/
 dist/
 build/
 
+# Claude Code's local state, including worktrees and their raw eval transcripts.
+.claude/
+
 # Raw eval transcripts carry local paths and account metadata; summary.json is the record.
 evals/runs/*/*.jsonl
